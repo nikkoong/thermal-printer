@@ -1,0 +1,3173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="A first-principles, interactive teaching post about the MXW01 Bluetooth thermal printer: bits, BLE, GATT, frames, CRC, raster images, rendering, and the local bridge." />
+<title>From a sentence to a black dot — MXW01 teaching notes</title>
+<style>
+  :root {
+    --bg: #0b0d10;
+    --bg-2: #101318;
+    --panel: #14181e;
+    --panel-2: #191e26;
+    --line: #2a303a;
+    --text: #e9e6df;
+    --muted: #9aa0aa;
+    --faint: #656d78;
+    --accent: #ffb84d;
+    --accent-2: #ffd08a;
+    --green: #6ee7a8;
+    --red: #ff7b72;
+    --paper: #fffdf6;
+    --ink: #171512;
+    --head-bg: rgba(11, 13, 16, 0.84);
+    --shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
+    --mono: "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+  }
+
+  body[data-theme="paper"] {
+    --bg: #f3ede2;
+    --bg-2: #ebe2d3;
+    --panel: #fffaf0;
+    --panel-2: #f8f1e4;
+    --line: #d9cfbf;
+    --text: #241f18;
+    --muted: #6b6255;
+    --faint: #8a7f6d;
+    --accent: #b45309;
+    --accent-2: #92400e;
+    --green: #047857;
+    --red: #b91c1c;
+    --paper: #fffdf6;
+    --ink: #171512;
+    --head-bg: rgba(243, 237, 226, 0.88);
+    --shadow: 0 24px 60px rgba(70, 50, 20, 0.16);
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { scroll-behavior: smooth; scroll-padding-top: 92px; }
+  body {
+    margin: 0;
+    color: var(--text);
+    background:
+      radial-gradient(1100px 560px at 8% -8%, rgba(255, 184, 77, 0.09), transparent 62%),
+      radial-gradient(900px 520px at 100% 4%, rgba(110, 231, 168, 0.055), transparent 58%),
+      var(--bg);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.68;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body[data-theme="paper"] {
+    background:
+      radial-gradient(1000px 520px at 8% -8%, rgba(180, 83, 9, 0.08), transparent 60%),
+      radial-gradient(900px 520px at 100% 4%, rgba(4, 120, 87, 0.045), transparent 58%),
+      var(--bg);
+  }
+
+  ::selection { background: rgba(255, 184, 77, 0.28); }
+  a { color: var(--accent-2); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  button, input, select { font: inherit; }
+  button { cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  h1, h2, h3, p { margin-top: 0; }
+  code, kbd {
+    font-family: var(--mono);
+    font-size: 0.9em;
+    background: rgba(255, 255, 255, 0.07);
+    padding: 2px 5px;
+    border-radius: 4px;
+  }
+  body[data-theme="paper"] code,
+  body[data-theme="paper"] kbd { background: rgba(0, 0, 0, 0.06); }
+  pre code { background: none; padding: 0; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .noscript {
+    max-width: 1180px; margin: 12px auto 0; padding: 10px 14px;
+    border: 1px solid var(--line); border-radius: 8px;
+    color: var(--muted); background: var(--panel); font-size: 12px;
+  }
+
+  .progress {
+    position: fixed; top: 0; left: 0; z-index: 50;
+    width: 0; height: 3px; background: var(--accent);
+    box-shadow: 0 0 14px rgba(255, 184, 77, 0.45);
+  }
+
+  .site-head {
+    position: sticky; top: 0; z-index: 40;
+    background: var(--head-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--line);
+  }
+  .site-head-inner {
+    max-width: 1180px; margin: 0 auto; padding: 12px 22px;
+    display: flex; align-items: center; gap: 22px;
+  }
+  .brand {
+    display: inline-flex; align-items: center; gap: 10px;
+    color: var(--text); text-decoration: none;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.13em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .brand .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 4px rgba(255, 184, 77, 0.12);
+  }
+  .brand .slash { color: var(--faint); }
+  .site-nav {
+    display: flex; align-items: center; gap: 15px;
+    flex: 1 1 auto; min-width: 0;
+    overflow-x: auto; scrollbar-width: none;
+  }
+  .site-nav::-webkit-scrollbar { display: none; }
+  .site-nav a {
+    color: var(--muted); text-decoration: none;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; white-space: nowrap;
+  }
+  .site-nav a:hover { color: var(--accent-2); }
+  .theme-btn {
+    margin-left: auto; flex: none;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+    border-radius: 999px; padding: 7px 11px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em;
+    text-transform: uppercase; white-space: nowrap;
+    transition: border-color 140ms ease, color 140ms ease;
+  }
+  .theme-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+
+  .hero {
+    position: relative; overflow: hidden;
+    max-width: 1180px; margin: 0 auto; padding: 76px 22px 34px;
+    display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(330px, 0.92fr);
+    gap: 48px; align-items: center;
+  }
+  .hero::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: linear-gradient(to bottom, black, transparent 78%);
+    -webkit-mask-image: linear-gradient(to bottom, black, transparent 78%);
+  }
+  body[data-theme="paper"] .hero::before {
+    background-image:
+      linear-gradient(rgba(0, 0, 0, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.045) 1px, transparent 1px);
+  }
+  .hero-copy { position: relative; z-index: 1; }
+  .kicker, .eyebrow {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .kicker { margin: 0 0 14px; }
+  h1 {
+    margin: 0 0 24px;
+    font-size: clamp(48px, 6.8vw, 86px);
+    line-height: 0.94; letter-spacing: -0.06em; font-weight: 700;
+  }
+  h1 em {
+    font-family: var(--serif); font-weight: 400; font-style: italic;
+    color: var(--accent-2); letter-spacing: -0.045em;
+  }
+  .standfirst {
+    max-width: 640px; margin: 0;
+    color: var(--muted); font-size: clamp(16px, 1.8vw, 19px); line-height: 1.62;
+  }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 24px 0 26px; }
+  .chip {
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 5px 9px; background: rgba(255, 255, 255, 0.025);
+    color: var(--muted); font-family: var(--mono);
+    font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase;
+  }
+  body[data-theme="paper"] .chip { background: rgba(255, 255, 255, 0.4); }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    border-radius: 9px; padding: 11px 15px; text-decoration: none;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+    text-transform: uppercase; transition: border-color 140ms ease, background 140ms ease, color 140ms ease;
+  }
+  .btn:hover { border-color: #3b434f; background: #20252d; }
+  body[data-theme="paper"] .btn:hover { background: #efe6d7; border-color: #b9ab96; }
+  body[data-theme="paper"] .btn.primary { color: #fffaf0; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #1b1408; font-weight: 700; }
+  .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+  .btn.ghost { background: transparent; color: var(--muted); }
+  .btn.ghost:hover { color: var(--accent-2); }
+  .btn.small { padding: 7px 10px; font-size: 9px; }
+
+  .glance-wrap {
+    max-width: 1180px; margin: 0 auto; padding: 0 22px 26px;
+  }
+  .glance {
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px;
+    background: transparent; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  }
+  .glance div { background: var(--bg); padding: 16px 14px; box-shadow: inset 0 0 0 1px var(--line); }
+  .glance b {
+    display: block; color: var(--accent); font-family: var(--mono);
+    font-size: 19px; letter-spacing: -0.03em; font-weight: 600;
+  }
+  .glance span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  .hero-art {
+    position: relative; z-index: 1; min-height: 500px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .receipt {
+    position: relative; width: min(100%, 280px);
+    background: var(--paper); color: var(--ink);
+    padding: 24px 22px 34px;
+    font-family: var(--mono); font-size: 11px; line-height: 1.5;
+    box-shadow: var(--shadow); transform: translateX(-12px) rotate(-3.2deg);
+  }
+  .receipt::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -8px; height: 8px;
+    background:
+      linear-gradient(135deg, var(--paper) 4px, transparent 0) 0 0 / 8px 8px,
+      linear-gradient(45deg, var(--paper) 4px, transparent 0) 0 0 / 8px 8px;
+  }
+  .receipt-brand { color: #7a7164; font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .receipt-title {
+    margin: 16px 0 18px; font-family: var(--sans); font-weight: 800;
+    font-size: 39px; line-height: 0.92; letter-spacing: -0.06em;
+  }
+  .receipt-title span { color: #8a5a12; }
+  .receipt-rule { border-top: 1px solid rgba(23, 21, 18, 0.35); margin: 13px 0; }
+  .receipt-rule.dashed { border-top-style: dashed; }
+  .receipt-row { display: flex; justify-content: space-between; gap: 12px; margin: 5px 0; }
+  .receipt-row span:first-child { color: #7a7164; }
+  .receipt-small { margin-top: 18px; color: #5f574b; font-size: 9px; line-height: 1.6; }
+  .receipt-barcode {
+    height: 28px; margin-top: 18px; opacity: 0.85;
+    background: repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 5px, var(--ink) 5px 6px, transparent 6px 10px);
+  }
+  .stack-art {
+    position: absolute; right: -20px; bottom: 20px;
+    display: flex; flex-direction: column; gap: 6px; align-items: flex-end;
+  }
+  .stack-art span {
+    display: block; padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: 4px;
+    background: rgba(11, 13, 16, 0.78); color: var(--muted);
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em;
+    text-transform: uppercase; backdrop-filter: blur(8px);
+  }
+  body[data-theme="paper"] .stack-art span { background: rgba(255, 250, 240, 0.86); }
+  .stack-art span:nth-child(1) { border-color: rgba(255, 184, 77, 0.45); color: var(--accent-2); }
+  .stack-art span:nth-child(2) { transform: translateX(-14px); }
+  .stack-art span:nth-child(3) { transform: translateX(-4px); }
+  .stack-art span:nth-child(4) { transform: translateX(-18px); }
+  .stack-art span:nth-child(5) { transform: translateX(-8px); }
+  .stack-art span:nth-child(6) { transform: translateX(-20px); }
+  .stack-art span:nth-child(7) { transform: translateX(-10px); }
+  .stack-art span:nth-child(8) { transform: translateX(-24px); }
+
+  .breath {
+    max-width: 980px; margin: 24px auto 0; padding: 0 22px;
+  }
+  .breath-inner {
+    border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 184, 77, 0.055), transparent 140px), var(--panel);
+    padding: 22px 24px;
+  }
+  .breath p:last-child { margin: 8px 0 0; color: var(--muted); font-size: 17px; }
+  .breath strong { color: var(--text); }
+
+  .section {
+    max-width: 1180px; margin: 0 auto; padding: 68px 22px;
+    border-top: 1px solid var(--line);
+  }
+  .section-head {
+    display: grid; grid-template-columns: 88px minmax(0, 1fr);
+    gap: 24px; align-items: start; margin-bottom: 28px;
+  }
+  .section-num {
+    padding-top: 7px; color: var(--accent);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em;
+  }
+  .section h2 {
+    margin: 0 0 12px;
+    font-size: clamp(31px, 4.2vw, 50px);
+    line-height: 1.02; letter-spacing: -0.045em; font-weight: 700;
+  }
+  .section-lede {
+    max-width: 780px; margin: 0;
+    color: var(--muted); font-size: clamp(16px, 1.8vw, 19px); line-height: 1.62;
+  }
+  .prose { max-width: 760px; margin-left: 112px; }
+  .prose p { margin-bottom: 1.1em; }
+  .prose p:last-child { margin-bottom: 0; }
+  .prose strong { color: var(--text); }
+  .prose ul, .prose ol { padding-left: 1.2em; margin: 0 0 1.2em; color: var(--muted); }
+  .prose li { margin: 0.45em 0; }
+  .prose li::marker { color: var(--accent); }
+
+  .lab {
+    max-width: 980px; margin: 30px 0 0 112px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 160px), var(--panel);
+    border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
+  }
+  .lab-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    padding: 13px 18px; border-bottom: 1px solid var(--line);
+    color: var(--muted); font-family: var(--mono); font-size: 9px;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .lab-head strong { color: var(--accent); font-weight: 600; }
+  .lab-body { padding: 20px; }
+  .lab-note {
+    margin: 16px 0 0; color: var(--faint); font-size: 12px; line-height: 1.6;
+  }
+  .lab-note code { font-size: 0.92em; }
+
+  .callout {
+    max-width: 760px; margin: 24px 0 0 112px;
+    border-left: 3px solid var(--accent);
+    background: rgba(255, 184, 77, 0.065);
+    border-radius: 0 10px 10px 0;
+    padding: 13px 17px; color: var(--muted); font-size: 14px;
+  }
+  .callout strong { color: var(--text); }
+  body[data-theme="paper"] .callout { background: rgba(180, 83, 9, 0.07); }
+
+  .fact-grid {
+    max-width: 760px; margin: 24px 0 0 112px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;
+  }
+  .fact {
+    border: 1px solid var(--line); border-radius: 10px;
+    background: var(--panel); padding: 13px 14px;
+  }
+  .fact b {
+    display: block; color: var(--accent); font-family: var(--mono);
+    font-size: 18px; letter-spacing: -0.03em; font-weight: 600;
+  }
+  .fact span { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+  .bit-row { display: flex; flex-wrap: wrap; gap: 7px; }
+  .bit {
+    width: 54px; min-height: 64px; border: 1px solid var(--line);
+    background: var(--panel-2); color: var(--muted); border-radius: 9px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-family: var(--mono); transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  }
+  .bit:hover { border-color: var(--faint); }
+  .bit .val { font-size: 22px; line-height: 1; color: var(--text); }
+  .bit .pos { font-size: 8px; letter-spacing: 0.08em; color: var(--faint); text-transform: uppercase; }
+  .bit.on { border-color: var(--accent); background: rgba(255, 184, 77, 0.12); }
+  .bit.on .val { color: var(--accent-2); }
+  .readouts {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px;
+  }
+  .readout {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2);
+    padding: 10px 11px;
+  }
+  .readout span {
+    display: block; color: var(--faint); font-family: var(--mono);
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .readout code {
+    display: block; margin-top: 4px; background: none; padding: 0;
+    color: var(--text); font-size: 16px;
+  }
+  .preset-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+  .preset-btn {
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    border-radius: 999px; padding: 6px 9px;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .preset-btn:hover { border-color: var(--accent); color: var(--accent-2); }
+
+  .layer-explorer { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 16px; }
+  .layer-list { display: flex; flex-direction: column; gap: 6px; }
+  .layer-btn {
+    text-align: left; border: 1px solid var(--line); background: var(--panel-2);
+    color: var(--muted); border-radius: 8px; padding: 10px 12px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em;
+    transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+  }
+  .layer-btn:hover { border-color: var(--faint); color: var(--text); }
+  .layer-btn.active { border-color: var(--accent); color: var(--accent-2); background: rgba(255, 184, 77, 0.08); }
+  .layer-detail {
+    min-height: 220px; border: 1px solid var(--line); border-radius: 11px;
+    background: var(--panel-2); padding: 18px 19px;
+  }
+  .layer-detail .eyebrow { margin-bottom: 7px; }
+  .layer-detail h3 { margin: 0 0 8px; font-size: 20px; letter-spacing: -0.02em; }
+  .layer-detail p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+  .layer-detail .fail {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12px;
+  }
+  .layer-detail .fail b { color: var(--red); font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .gatt-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .gatt-tab {
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    border-radius: 7px; padding: 7px 10px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .gatt-tab:hover { border-color: var(--faint); color: var(--text); }
+  .gatt-tab.active { border-color: var(--accent); color: var(--accent-2); background: rgba(255, 184, 77, 0.08); }
+  .gatt-body { display: grid; grid-template-columns: minmax(220px, 0.75fr) minmax(0, 1.25fr); gap: 16px; }
+  .gatt-list { display: flex; flex-direction: column; gap: 6px; }
+  .gatt-item {
+    text-align: left; border: 1px solid var(--line); background: var(--panel-2);
+    border-radius: 8px; padding: 10px 12px; color: var(--muted);
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .gatt-item:hover { border-color: var(--faint); }
+  .gatt-item.active { border-color: var(--accent); background: rgba(255, 184, 77, 0.08); color: var(--text); }
+  .gatt-item .uuid { font-family: var(--mono); font-size: 12px; color: var(--text); }
+  .gatt-item .kind { font-family: var(--mono); font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+  .gatt-item.service .uuid { color: var(--accent-2); }
+  .gatt-detail {
+    border: 1px solid var(--line); border-radius: 11px; background: var(--panel-2);
+    padding: 18px 19px; min-height: 220px;
+  }
+  .gatt-detail h3 { margin: 0 0 4px; font-size: 20px; letter-spacing: -0.02em; }
+  .gatt-detail .sub {
+    color: var(--faint); font-family: var(--mono); font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .gatt-detail p { color: var(--muted); font-size: 14px; margin: 12px 0; }
+  .gatt-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .gatt-pill {
+    border: 1px solid var(--line); border-radius: 999px; padding: 4px 8px;
+    color: var(--muted); font-family: var(--mono); font-size: 8px;
+    letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .gatt-pill.out { color: var(--accent-2); border-color: rgba(255, 184, 77, 0.35); }
+  .gatt-pill.in { color: var(--green); border-color: rgba(110, 231, 168, 0.35); }
+  .gatt-example {
+    margin-top: 14px; padding: 10px 11px; border-radius: 7px;
+    background: rgba(0, 0, 0, 0.22); color: var(--muted);
+    font-family: var(--mono); font-size: 10px; line-height: 1.7; overflow-x: auto;
+  }
+  body[data-theme="paper"] .gatt-example { background: rgba(0, 0, 0, 0.045); }
+
+  .frame-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field label {
+    display: block; color: var(--faint); font-family: var(--mono);
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .field select, .field input[type="text"] {
+    width: 100%; border: 1px solid var(--line); background: #0f1216;
+    color: var(--text); border-radius: 8px; padding: 10px 11px;
+    font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  body[data-theme="paper"] .field select,
+  body[data-theme="paper"] .field input[type="text"] { background: #fffdf6; }
+  .field select:focus, .field input[type="text"]:focus {
+    border-color: rgba(255, 184, 77, 0.55); box-shadow: 0 0 0 3px rgba(255, 184, 77, 0.08);
+  }
+  .frame-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+  .checkline {
+    display: inline-flex; align-items: center; gap: 7px;
+    color: var(--muted); font-size: 11px;
+  }
+  .checkline input { accent-color: var(--accent); }
+  .frame-output {
+    margin-top: 16px; padding: 15px; border: 1px solid var(--line);
+    border-radius: 10px; background: #090b0e; overflow-x: auto;
+  }
+  body[data-theme="paper"] .frame-output { background: #fdf8ee; }
+  .frame-bytes { display: flex; flex-wrap: wrap; gap: 4px; }
+  .byte {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 32px; height: 34px; padding: 0 7px;
+    border: 1px solid var(--line); border-radius: 5px;
+    background: var(--panel-2); color: var(--text);
+    font-family: var(--mono); font-size: 13px;
+  }
+  .byte.header { border-color: rgba(154, 160, 170, 0.45); color: var(--muted); }
+  .byte.cmd { border-color: rgba(255, 184, 77, 0.55); color: var(--accent-2); }
+  .byte.reserved { border-color: rgba(154, 160, 170, 0.28); color: var(--faint); }
+  .byte.length { border-color: rgba(110, 231, 168, 0.35); color: var(--green); }
+  .byte.payload { border-color: rgba(255, 208, 138, 0.3); color: var(--accent-2); }
+  .byte.crc { border-color: rgba(110, 231, 168, 0.6); color: var(--green); background: rgba(110, 231, 168, 0.06); }
+  .byte.end { border-color: rgba(255, 123, 114, 0.35); color: var(--red); }
+  .frame-legend { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; color: var(--faint); font-family: var(--mono); font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; }
+  .frame-legend span::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 5px; background: currentColor; }
+  .frame-legend .l-cmd { color: var(--accent-2); }
+  .frame-legend .l-len { color: var(--green); }
+  .frame-legend .l-payload { color: var(--accent-2); }
+  .frame-legend .l-crc { color: var(--green); }
+  .frame-legend .l-end { color: var(--red); }
+  .frame-summary { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+  .frame-summary b { color: var(--text); }
+  .crc-steps { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .crc-steps table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .crc-steps th, .crc-steps td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  .crc-steps th { color: var(--faint); font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; font-size: 8px; }
+  .frame-error { color: var(--red); font-family: var(--mono); font-size: 11px; }
+
+  .raster-wrap { display: grid; grid-template-columns: 255px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .pixel-paper {
+    padding: 12px; background: var(--paper); border-radius: 8px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.28); width: 100%; max-width: 320px;
+  }
+  .pixel-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; }
+  .pixel {
+    aspect-ratio: 1; border: 0; border-radius: 2px; background: #fffdf6;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1); padding: 0;
+  }
+  .pixel.black { background: #171512; }
+  .pixel:hover { box-shadow: inset 0 0 0 1px rgba(180, 83, 9, 0.65); }
+  .raster-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .raster-legend { margin: 10px 0 0; color: var(--faint); font-family: var(--mono); font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .raster-table-wrap { overflow-x: auto; }
+  .raster-table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .raster-table th, .raster-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .raster-table th { color: var(--faint); font-weight: 500; text-transform: uppercase; letter-spacing: 0.07em; font-size: 8px; }
+  .raster-table td:first-child { color: var(--faint); }
+  .raster-table code { background: none; padding: 0; color: var(--text); font-size: 11px; }
+  .raster-table .bits { color: var(--faint); font-size: 9px; letter-spacing: 0.06em; }
+  .raster-table .printer-col { color: var(--accent-2); }
+  .raster-table .pillow-col { color: var(--green); }
+
+  .type-stage {
+    position: relative; overflow: hidden; padding: 30px 24px 34px;
+    border-radius: 10px; background: var(--paper); color: var(--ink);
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.18);
+  }
+  .type-words {
+    display: flex; align-items: baseline; gap: 28px;
+    font-family: var(--serif); font-size: clamp(42px, 6vw, 64px); line-height: 1;
+  }
+  .type-words span { position: relative; display: inline-block; padding-bottom: 5px; transition: transform 260ms ease; }
+  .type-words span::after {
+    content: ""; position: absolute; left: -4px; right: -4px; bottom: 0;
+    border-top: 1px dashed rgba(23, 21, 18, 0.34);
+  }
+  .type-stage[data-mode="top"] .short { transform: translateY(-18px); }
+  .type-caption { margin: 14px 0 0; color: var(--faint); font-size: 12px; }
+  .type-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 14px; }
+  .type-controls .lab-note { margin: 0; }
+
+  .door-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .door-tab {
+    border: 1px solid var(--line); background: transparent; color: var(--muted);
+    border-radius: 7px; padding: 8px 11px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+  }
+  .door-tab:hover { border-color: var(--faint); color: var(--text); }
+  .door-tab.active { border-color: var(--accent); color: var(--accent-2); background: rgba(255, 184, 77, 0.08); }
+  .door-panel { display: none; }
+  .door-panel.active { display: block; }
+  .door-panel p { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  pre {
+    margin: 0; padding: 14px 15px; border: 1px solid var(--line); border-radius: 9px;
+    background: #090b0e; color: var(--muted); overflow-x: auto;
+    font-family: var(--mono); font-size: 11px; line-height: 1.7;
+  }
+  body[data-theme="paper"] pre { background: #fdf8ee; }
+  pre .c { color: var(--faint); }
+  pre .k { color: var(--accent-2); }
+  pre .s { color: var(--green); }
+
+  .journey-track {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 7px; margin: 18px 0 14px;
+  }
+  .stage {
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 6px;
+    background: var(--panel-2); color: var(--faint); text-align: center;
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.06em;
+    text-transform: uppercase; transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
+  }
+  .stage.active { border-color: var(--accent); color: var(--accent-2); background: rgba(255, 184, 77, 0.1); }
+  .stage.done { border-color: rgba(110, 231, 168, 0.4); color: var(--green); }
+  .journey-bar { height: 4px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .journey-bar span { display: block; width: 0; height: 100%; background: var(--accent); transition: width 260ms ease; }
+  .journey-log {
+    min-height: 42px; margin: 12px 0 0; color: var(--muted);
+    font-family: var(--mono); font-size: 10px; line-height: 1.7;
+  }
+  .journey-log b { color: var(--accent-2); font-weight: 500; }
+
+  .bug-grid { max-width: 980px; margin: 28px 0 0 112px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .bug {
+    border: 1px solid var(--line); border-radius: 11px; background: var(--panel);
+    padding: 15px 16px;
+  }
+  .bug .tag {
+    display: inline-block; color: var(--accent); font-family: var(--mono);
+    font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .bug h3 { margin: 7px 0 5px; font-size: 15px; letter-spacing: -0.01em; }
+  .bug p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+  .ladder { max-width: 760px; margin: 24px 0 0 112px; padding-left: 1.2em; color: var(--muted); }
+  .ladder li { margin: 0.55em 0; }
+  .ladder li::marker { color: var(--accent); font-family: var(--mono); }
+
+  .quiz { display: flex; flex-direction: column; gap: 12px; }
+  .quiz-q { border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); padding: 14px 15px; }
+  .quiz-q h3 { margin: 0 0 10px; font-size: 14px; }
+  .quiz-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .quiz-opt {
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 7px; padding: 7px 10px; font-size: 12px; text-align: left;
+  }
+  .quiz-opt:hover { border-color: var(--faint); color: var(--text); }
+  .quiz-opt.correct { border-color: var(--green); color: var(--green); background: rgba(110, 231, 168, 0.07); }
+  .quiz-opt.wrong { border-color: var(--red); color: var(--red); background: rgba(255, 123, 114, 0.06); }
+  .quiz-feedback { min-height: 18px; margin: 8px 0 0; color: var(--faint); font-size: 11px; }
+
+  .glossary {
+    max-width: 980px; margin: 32px auto 0; padding: 0 22px;
+  }
+  .glossary details {
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+    padding: 18px 0;
+  }
+  .glossary summary {
+    cursor: pointer; color: var(--accent); font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    list-style: none;
+  }
+  .glossary summary::-webkit-details-marker { display: none; }
+  .glossary summary::before { content: "+ "; color: var(--faint); }
+  .glossary details[open] summary::before { content: "− "; }
+  .glossary-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 24px; margin-top: 16px;
+  }
+  .glossary-grid div { display: flex; gap: 9px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .glossary-grid b {
+    flex: 0 0 72px; color: var(--text); font-family: var(--mono);
+    font-size: 9px; letter-spacing: 0.05em; padding-top: 3px;
+  }
+
+  .view-switch {
+    max-width: 1180px; margin: 0 auto; padding: 18px 22px 0;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  }
+  .view-tab {
+    border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+    border-radius: 999px; padding: 9px 13px;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .view-tab:hover { border-color: var(--faint); color: var(--text); }
+  .view-tab.active { border-color: var(--accent); color: var(--accent-2); background: rgba(255, 184, 77, 0.08); }
+  .view-hint { color: var(--faint); font-family: var(--mono); font-size: 8px; letter-spacing: 0.06em; text-transform: uppercase; }
+
+  .story-hero {
+    max-width: 1180px; margin: 0 auto; padding: 54px 22px 24px;
+  }
+  .story-hero h1 {
+    max-width: 980px; margin: 0 0 22px;
+    font-size: clamp(46px, 6.4vw, 82px); line-height: 0.95;
+    letter-spacing: -0.055em;
+  }
+  .story-hero .standfirst { max-width: 820px; }
+  .answer-wrap {
+    max-width: 1180px; margin: 0 auto; padding: 18px 22px 34px;
+    display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr); gap: 14px;
+  }
+  .answer-card {
+    border: 1px solid var(--line); border-radius: 14px;
+    background: linear-gradient(180deg, rgba(255, 184, 77, 0.06), transparent 190px), var(--panel);
+    padding: 22px 24px;
+  }
+  .answer-list { margin: 14px 0 0; padding: 0; list-style: none; counter-reset: answer; }
+  .answer-list li {
+    position: relative; padding-left: 34px; margin: 12px 0;
+    color: var(--muted); font-size: 14px; line-height: 1.62; counter-increment: answer;
+  }
+  .answer-list li::before {
+    content: counter(answer); position: absolute; left: 0; top: 2px;
+    width: 22px; height: 22px; border: 1px solid var(--accent); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--accent); font-family: var(--mono); font-size: 9px;
+  }
+  .answer-list strong { color: var(--text); }
+  .story-toc { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); padding: 20px; }
+  .story-toc a {
+    display: block; padding: 7px 0; color: var(--muted); text-decoration: none;
+    border-bottom: 1px solid var(--line); font-family: var(--mono); font-size: 10px;
+  }
+  .story-toc a:last-child { border-bottom: 0; }
+  .story-toc a:hover { color: var(--accent-2); }
+  .story-toc a span { color: var(--faint); margin-right: 8px; }
+
+  .scr {
+    max-width: 1180px; margin: 0 auto; padding: 0 22px 36px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+  }
+  .scr > div { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--panel); }
+  .scr span {
+    display: block; margin-bottom: 6px; color: var(--accent);
+    font-family: var(--mono); font-size: 8px; letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .scr p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+
+  .story-section {
+    max-width: 1180px; margin: 0 auto; padding: 58px 22px;
+    border-top: 1px solid var(--line);
+  }
+  .story-head { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 24px; margin-bottom: 24px; }
+  .story-head .num { color: var(--accent); font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; padding-top: 7px; }
+  .story-head h2 {
+    margin: 0 0 10px; font-size: clamp(30px, 3.8vw, 46px);
+    line-height: 1.04; letter-spacing: -0.04em;
+  }
+  .story-lede { max-width: 820px; margin: 0; color: var(--muted); font-size: 18px; line-height: 1.6; }
+  .story-body { max-width: 820px; margin-left: 104px; }
+  .story-body p { margin-bottom: 1.1em; }
+  .story-body strong { color: var(--text); }
+  .story-body ul, .story-body ol { color: var(--muted); padding-left: 1.2em; margin: 0 0 1.2em; }
+  .story-body li { margin: 0.45em 0; }
+  .story-body li::marker { color: var(--accent); }
+  .so-what {
+    max-width: 820px; margin: 24px 0 0 104px;
+    border-left: 3px solid var(--accent);
+    background: rgba(255, 184, 77, 0.06);
+    border-radius: 0 10px 10px 0;
+    padding: 12px 16px; color: var(--muted); font-size: 14px;
+  }
+  .so-what strong { color: var(--text); }
+  body[data-theme="paper"] .so-what { background: rgba(180, 83, 9, 0.07); }
+
+  .exhibit {
+    max-width: 980px; margin: 26px 0 0 104px;
+    border: 1px solid var(--line); border-radius: 14px;
+    background: var(--panel); overflow: hidden;
+  }
+  .exhibit-head {
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+    color: var(--faint); font-family: var(--mono); font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .exhibit-head strong { color: var(--accent); font-weight: 600; }
+  .exhibit-body { padding: 18px; }
+  .exhibit-note { margin: 14px 0 0; color: var(--faint); font-size: 11px; line-height: 1.6; }
+  .hex {
+    margin: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px;
+    background: #090b0e; color: var(--muted); font-family: var(--mono);
+    font-size: 12px; line-height: 1.8; overflow-x: auto;
+  }
+  body[data-theme="paper"] .hex { background: #fdf8ee; }
+  .hex .field { color: var(--accent-2); }
+  .hex .crc { color: var(--green); }
+  .hex .dim { color: var(--faint); }
+  .field-table { width: 100%; border-collapse: collapse; margin-top: 14px; color: var(--muted); font-size: 12px; }
+  .table-wrap { overflow-x: auto; }
+  .field-table th, .field-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .field-table th { color: var(--faint); font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .field-table td:first-child { color: var(--text); font-family: var(--mono); font-size: 10px; white-space: nowrap; }
+  .packet-stack { display: flex; flex-direction: column; gap: 1px; }
+  .packet-layer {
+    display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px;
+    padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line);
+  }
+  .packet-layer:first-child { border-radius: 8px 8px 0 0; }
+  .packet-layer:last-child { border-radius: 0 0 8px 8px; }
+  .packet-layer b { color: var(--text); font-family: var(--mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .packet-layer span { color: var(--muted); font-size: 12px; }
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .compare-card { border: 1px solid var(--line); border-radius: 10px; padding: 14px; background: var(--panel-2); }
+  .compare-card h3 { margin: 0 0 6px; font-size: 15px; }
+  .compare-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+  .compare-card .tag { color: var(--accent); font-family: var(--mono); font-size: 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+  .flow > div {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2);
+    padding: 10px 8px; text-align: center;
+  }
+  .flow b { display: block; color: var(--accent); font-family: var(--mono); font-size: 15px; }
+  .flow span { display: block; margin-top: 3px; color: var(--muted); font-size: 9px; line-height: 1.35; }
+  .bug-exhibit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bug-panel { background: var(--paper); color: var(--ink); border-radius: 8px; padding: 16px; min-height: 140px; }
+  .bug-panel .words { display: flex; align-items: baseline; gap: 22px; font-family: var(--serif); font-size: 48px; line-height: 1; }
+  .bug-panel .short { display: inline-block; transform: translateY(-15px); }
+  .bug-panel .line { display: block; border-top: 1px dashed rgba(23, 21, 18, 0.35); margin-top: 8px; }
+  .bug-panel .caption { margin: 12px 0 0; color: #6b6255; font-size: 10px; line-height: 1.5; }
+  .story-defs { max-width: 980px; margin: 34px auto 0; padding: 0 22px; }
+  .story-defs details { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 18px 0; }
+  .story-defs summary {
+    cursor: pointer; color: var(--accent); font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; list-style: none;
+  }
+  .story-defs summary::-webkit-details-marker { display: none; }
+  .story-defs summary::before { content: "+ "; color: var(--faint); }
+  .story-defs details[open] summary::before { content: "− "; }
+  .defs-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 24px; margin-top: 16px; }
+  .defs-grid div { display: flex; gap: 9px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .defs-grid b { flex: 0 0 92px; color: var(--text); font-family: var(--mono); font-size: 9px; letter-spacing: 0.04em; padding-top: 3px; }
+  .story-close {
+    max-width: 820px; margin: 34px 0 0 104px; padding: 20px 22px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+  }
+  .story-close p { margin: 0; font-family: var(--serif); font-size: 22px; line-height: 1.45; }
+  .story-close span { display: block; margin-top: 10px; color: var(--faint); font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .scope {
+    max-width: 820px; margin: 24px 0 0 104px; padding: 13px 16px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2);
+    color: var(--muted); font-size: 12px; line-height: 1.6;
+  }
+  .scope strong { color: var(--text); }
+
+  @media (max-width: 980px) {
+    .story-head { grid-template-columns: 1fr; gap: 8px; }
+    .story-head .num { padding-top: 0; }
+    .story-body, .so-what, .exhibit, .story-close, .scope { margin-left: 0; }
+    .answer-wrap { grid-template-columns: 1fr; }
+    .scr { grid-template-columns: 1fr; }
+    .compare-grid, .bug-exhibit { grid-template-columns: 1fr; }
+    .flow { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 720px) {
+    .view-switch { padding: 14px 16px 0; }
+    .view-hint { display: none; }
+    .story-hero { padding: 36px 16px 20px; }
+    .answer-wrap { padding: 16px 16px 26px; }
+    .scr { padding: 0 16px 28px; }
+    .story-section { padding: 46px 16px; }
+    .story-defs { padding: 0 16px; }
+    .packet-layer { grid-template-columns: 1fr; gap: 4px; }
+    .defs-grid { grid-template-columns: 1fr; }
+    .hex { font-size: 11px; }
+    .bug-panel .words { font-size: 40px; gap: 16px; }
+    .story-close p { font-size: 19px; }
+    .flow { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .site-foot {
+    max-width: 1180px; margin: 0 auto; padding: 40px 22px 70px;
+    border-top: 1px solid var(--line); color: var(--faint); font-size: 12px;
+  }
+  .site-foot .foot-grid { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; }
+  .site-foot a { color: var(--muted); }
+  .site-foot .fine { margin-top: 18px; max-width: 760px; line-height: 1.6; }
+
+  @media (max-width: 1400px) {
+    .stack-art { display: none; }
+  }
+  @media (max-width: 980px) {
+    .hero { grid-template-columns: 1fr; gap: 18px; padding-top: 54px; }
+    .hero-art { min-height: 390px; order: 2; }
+    .glance { grid-template-columns: repeat(3, 1fr); }
+    .section-head { grid-template-columns: 1fr; gap: 8px; }
+    .section-num { padding-top: 0; }
+    .prose, .lab, .callout, .fact-grid, .bug-grid, .ladder { margin-left: 0; }
+    .layer-explorer, .gatt-body, .raster-wrap { grid-template-columns: 1fr; }
+    .layer-detail, .gatt-detail { min-height: 0; }
+    .stack-art { right: 8px; }
+  }
+  @media (max-width: 900px) {
+    html { scroll-padding-top: 126px; }
+    .site-head-inner { flex-wrap: wrap; gap: 9px 12px; padding: 10px 16px; }
+    .site-nav { order: 3; flex: 1 0 100%; padding-top: 7px; gap: 9px; }
+    .site-nav a { font-size: 9px; }
+    .theme-btn { padding: 6px 8px; font-size: 8px; }
+  }
+  @media (max-width: 720px) {
+    .hero { padding: 44px 16px 26px; }
+    .glance-wrap { padding: 0 16px 22px; }
+    .glance { grid-template-columns: repeat(2, 1fr); }
+    .glance div:last-child { grid-column: span 2; }
+    .section { padding: 50px 16px; }
+    .lab-body { padding: 15px; }
+    .readouts { grid-template-columns: repeat(2, 1fr); }
+    .bit-row { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+    .bit { width: auto; min-height: 54px; }
+    .bit .val { font-size: 18px; }
+    .bit .pos { font-size: 7px; letter-spacing: 0; }
+    .fact-grid { grid-template-columns: repeat(2, 1fr); }
+    .fact-grid .fact:last-child { grid-column: span 2; }
+    .frame-controls { grid-template-columns: 1fr; }
+    .journey-track { grid-template-columns: repeat(3, 1fr); }
+    .bug-grid { grid-template-columns: 1fr; }
+    .glossary-grid { grid-template-columns: 1fr; }
+    .type-words { gap: 18px; }
+    .receipt { width: min(100%, 270px); }
+    .stack-art { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+<a class="sr-only" href="#main">Skip to content</a>
+<noscript><div class="noscript">The tabbed views and interactive labs need JavaScript. The field guide still reads without them; the full protocol reference is in <code>BLOG_NOTES.md</code>.</div></noscript>
+<div class="progress" id="progress" aria-hidden="true"></div>
+
+<header class="site-head">
+  <div class="site-head-inner">
+    <a class="brand" href="#main"><span class="dot"></span> Thermal <span class="slash">/</span> Notes</a>
+    <nav class="site-nav guide-nav" id="guideNav" aria-label="Field guide sections">
+      <a href="#dot">Bits</a>
+      <a href="#machine">Machine</a>
+      <a href="#ble">BLE</a>
+      <a href="#protocol">Protocol</a>
+      <a href="#render">Render</a>
+      <a href="#bridge">Bridge</a>
+      <a href="#bugs">Bugs</a>
+      <a href="#lessons">Lessons</a>
+    </nav>
+    <nav class="site-nav story-nav" id="storyNav" aria-label="Full narrative sections" hidden>
+      <a href="#story-answer">Answer</a>
+      <a href="#story-physics">Physics</a>
+      <a href="#story-ble">BLE</a>
+      <a href="#story-gatt">GATT</a>
+      <a href="#story-advert">Advert</a>
+      <a href="#story-protocol">Protocol</a>
+      <a href="#story-code">Code</a>
+      <a href="#story-height">Height</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" type="button" aria-pressed="false">Paper mode</button>
+  </div>
+</header>
+
+<main id="main">
+  <div class="view-switch" role="tablist" aria-label="Reading views">
+    <button class="view-tab active" id="tab-guide" type="button" role="tab" aria-selected="true" aria-controls="view-guide" data-view="guide">Field guide</button>
+    <button class="view-tab" id="tab-story" type="button" role="tab" aria-selected="false" aria-controls="view-story" data-view="story">The full story</button>
+    <span class="view-hint">Guided tour or consulting narrative</span>
+  </div>
+
+  <div class="view-panel" id="view-guide" role="tabpanel" aria-labelledby="tab-guide">
+  <section class="hero" id="top">
+    <div class="hero-copy">
+      <p class="kicker">A first-principles field guide</p>
+      <h1>From a sentence<br>to a <em>black dot.</em></h1>
+      <p class="standfirst">
+        A tiny Bluetooth thermal printer only worked through a phone app. To print from a laptop,
+        a web page, and a coding agent, I had to learn the whole stack: bits, radio, the Generic
+        Attribute Profile (GATT), frames, raster images, and one very opinionated print head. This
+        is that stack, from the bottom up.
+      </p>
+      <div class="meta-row">
+        <span class="chip">MXW01</span>
+        <span class="chip">384 px</span>
+        <span class="chip">1-bit</span>
+        <span class="chip">BLE</span>
+        <span class="chip">~12 min</span>
+      </div>
+      <div class="hero-actions">
+        <a class="btn primary" href="#dot">Start with a dot</a>
+        <a class="btn ghost" href="#protocol">Try the frame builder</a>
+      </div>
+    </div>
+
+    <div class="hero-art" aria-hidden="true">
+      <div class="receipt">
+        <div class="receipt-brand">Thermal / agent printer</div>
+        <div class="receipt-title">MXW01<br><span>ONLINE</span></div>
+        <div class="receipt-rule"></div>
+        <div class="receipt-row"><span>transport</span><span>BLE</span></div>
+        <div class="receipt-row"><span>width</span><span>384 px</span></div>
+        <div class="receipt-row"><span>depth</span><span>1-bit</span></div>
+        <div class="receipt-row"><span>status</span><span>ready</span></div>
+        <div class="receipt-rule dashed"></div>
+        <div class="receipt-small">printed from a laptop<br>no phone app involved</div>
+        <div class="receipt-barcode"></div>
+      </div>
+      <div class="stack-art">
+        <span>you</span>
+        <span>CLI / web / agent</span>
+        <span>HTTP + JSON</span>
+        <span>renderer</span>
+        <span>MXW01 frames</span>
+        <span>GATT</span>
+        <span>BLE radio</span>
+        <span>physics</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="glance-wrap">
+    <div class="glance" aria-label="Key numbers">
+      <div><b>384</b><span>heaters per row</span></div>
+      <div><b>48</b><span>bytes per row</span></div>
+      <div><b>1</b><span>bit per pixel</span></div>
+      <div><b>203</b><span>dots per inch</span></div>
+      <div><b>~8–10s</b><span>per short note</span></div>
+    </div>
+  </div>
+
+  <section class="breath">
+    <div class="breath-inner">
+      <p class="eyebrow">The whole thing in one breath</p>
+      <p>
+        A note becomes a <strong>384-pixel-wide, 1-bit image</strong>. The image becomes
+        <strong>48-byte rows</strong>. Commands become <strong>MXW01 frames</strong>, and the rows
+        stream to GATT characteristic <code>ae03</code>. A local daemon owns the BLE connection; the
+        command line, the web page, and the agent are just front doors.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="dot">
+    <div class="section-head">
+      <div class="section-num">01 / bits</div>
+      <div>
+        <h2>A dot is a decision.</h2>
+        <p class="section-lede">
+          Start at the paper. The print head is a row of 384 tiny heating elements. For each row
+          of the image, each element is either on or off. On means heat; heat turns the thermal
+          coating black. That is the entire display: 384 on/off decisions, repeated down the paper.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        One decision is a <strong>bit</strong>. Eight decisions are a <strong>byte</strong>. 384
+        decisions are <strong>48 bytes</strong>. The printer never receives the letter “A”; it
+        receives a pattern of bits that your renderer decided should be black.
+      </p>
+      <p>
+        This is why the first question is not “how do I send a string?” but “what pixels do I want,
+        and how are they packed?” Hex is just shorthand for four bits: <code>0x5D</code> is 93,
+        and one byte is exactly two hex digits. Endianness is the order of bytes in a multi-byte
+        number. The MXW01 uses little-endian 16-bit lengths, so 208 is <code>D0 00</code>, not
+        <code>00 D0</code>.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="bitlab-title">
+      <div class="lab-head">
+        <strong id="bitlab-title">Lab 01 — the bit switchboard</strong>
+        <span>8 switches = 1 byte</span>
+      </div>
+      <div class="lab-body">
+        <div class="bit-row" id="bitRow" role="group" aria-label="Byte bits"></div>
+        <div class="readouts" aria-live="polite">
+          <div class="readout"><span>binary</span><code id="bitBin">01000001</code></div>
+          <div class="readout"><span>decimal</span><code id="bitDec">65</code></div>
+          <div class="readout"><span>hex</span><code id="bitHex">0x41</code></div>
+          <div class="readout"><span>ASCII</span><code id="bitAscii">A</code></div>
+        </div>
+        <div class="preset-row" aria-label="Bit presets">
+          <button class="preset-btn" type="button" data-bits="01000001">Letter A</button>
+          <button class="preset-btn" type="button" data-bits="00000001">Printer leftmost pixel</button>
+          <button class="preset-btn" type="button" data-bits="10000000">Printer rightmost pixel</button>
+          <button class="preset-btn" type="button" data-bits="11111111">All black</button>
+          <button class="preset-btn" type="button" data-bits="00000000">All white</button>
+        </div>
+        <p class="lab-note" id="bitNote">
+          The same eight bits can mean the number 65, the letter <code>A</code>, or eight heater
+          decisions. Meaning comes from context.
+        </p>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Two conventions will bite you.</strong> The printer packs pixels least-significant-bit
+      first, and it treats <code>1</code> as black. Pillow’s 1-bit mode does the opposite on both
+      counts: <code>0</code> is black and pixels are packed most-significant-bit first. The driver
+      has to flip both.
+    </div>
+  </section>
+
+  <section class="section" id="machine">
+    <div class="section-head">
+      <div class="section-num">02 / machine</div>
+      <div>
+        <h2>The printer is a small computer.</h2>
+        <p class="section-lede">
+          Before the radio, there is a microcontroller running firmware, a buffer for image rows,
+          sensors for paper and temperature, a battery, and a print head. It sleeps. It accepts one
+          Bluetooth Low Energy (BLE) connection at a time. It can run out of paper.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        That means the printer is <strong>stateful</strong>. You are not writing to a file; you are
+        holding a conversation with a small machine that has physical needs. The useful analogy is
+        a tiny restaurant: you can order from the menu, but you cannot rearrange the kitchen.
+      </p>
+      <p>
+        Data transfer is layered. Each layer adds an envelope: voltage timing, radio packets, GATT
+        operations, protocol frames, raster rows. The layer above does not need to know the layer
+        below’s details. That is why a web form can eventually heat a dot without knowing anything
+        about radio modulation.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="layer-title">
+      <div class="lab-head">
+        <strong id="layer-title">Lab 02 — the stack, one layer at a time</strong>
+        <span>click a layer</span>
+      </div>
+      <div class="lab-body">
+        <div class="layer-explorer">
+          <div class="layer-list" role="tablist" aria-label="Stack layers">
+            <button class="layer-btn active" type="button" role="tab" aria-selected="true" data-layer="physics">01 / physics</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="radio">02 / radio</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="gatt">03 / link + GATT</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="protocol">04 / protocol</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="raster">05 / raster</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="render">06 / render</button>
+            <button class="layer-btn" type="button" role="tab" aria-selected="false" data-layer="you">07 / you</button>
+          </div>
+          <div class="layer-detail" id="layerDetail" role="tabpanel" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="fact-grid" aria-label="Key transfer questions">
+      <div class="fact"><b>Who?</b><span>an address, name, UUID, or file</span></div>
+      <div class="fact"><b>What?</b><span>bits, bytes, text, image, command</span></div>
+      <div class="fact"><b>Where?</b><span>header, length, delimiter, terminator</span></div>
+      <div class="fact"><b>How fast?</b><span>bit rate, connection interval, packet size, pacing</span></div>
+      <div class="fact"><b>In order?</b><span>stream, packets, sequence, retries</span></div>
+      <div class="fact"><b>Correct?</b><span>checksum, CRC, acknowledgement, timeout</span></div>
+      <div class="fact"><b>Meaning?</b><span>command codes, payload, state</span></div>
+    </div>
+  </section>
+
+  <section class="section" id="ble">
+    <div class="section-head">
+      <div class="section-num">03 / ble</div>
+      <div>
+        <h2>The invisible cable.</h2>
+        <p class="section-lede">
+          Bluetooth Low Energy replaces the wire with a low-power 2.4 GHz radio. A peripheral
+          advertises a small packet: “I am here, my name is MXW01.” A central — your laptop — scans,
+          connects, and discovers the GATT database.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        Think of advertising as a shop sign, the connection as walking in, and GATT as the menu.
+        The sign is not the menu. In BLE terms, the printer is the <strong>peripheral</strong> (the
+        advertiser) and the laptop is the <strong>central</strong> (the scanner and connector). The
+        MXW01 advertised <code>af30</code>, but the real command service was <code>ae30</code>. This
+        is the most important debugging lesson in the project:
+        <strong>advertising is a hint; the connected GATT table is the contract.</strong>
+      </p>
+      <p>
+        GATT is not a byte stream. It is a set of labelled characteristics. Underneath, the
+        Attribute Protocol (ATT) defines the read, write, and notify operations. GATT organizes data
+        into <strong>services</strong> (groups of related values) and <strong>characteristics</strong>
+        (the individual values). A characteristic has a UUID, a set of properties (read, write,
+        notify), and a value. Descriptors add metadata; the Client Characteristic Configuration
+        Descriptor (CCCD) is the descriptor that turns notifications on or off.
+      </p>
+      <p>
+        You write a value to <code>ae01</code>, subscribe to notifications on <code>ae02</code>, and
+        stream image rows to <code>ae03</code>. Writes are <em>write-without-response</em>, so the
+        ATT layer does not guarantee delivery; the printer’s own protocol replies are the feedback.
+      </p>
+      <p>
+        Each service and characteristic has a <strong>UUID</strong>, a 128-bit identifier. The short
+        <code>ae30</code> form is shorthand for
+        <code>0000ae30-0000-1000-8000-00805f9b34fb</code>: the 16-bit alias sits inside the standard
+        Bluetooth base UUID. The code looks up characteristics by UUID, not by a hard-coded handle
+        (the slot number where an attribute lives), because handles can differ between devices and
+        firmware versions.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="gatt-title">
+      <div class="lab-head">
+        <strong id="gatt-title">Lab 03 — the filing cabinet</strong>
+        <span>advertisement → real GATT</span>
+      </div>
+      <div class="lab-body">
+        <div class="gatt-tabs" role="tablist" aria-label="GATT views">
+          <button class="gatt-tab active" type="button" role="tab" aria-selected="true" data-view="adv">Advertisement</button>
+          <button class="gatt-tab" type="button" role="tab" aria-selected="false" data-view="gatt">Connected GATT</button>
+        </div>
+        <div class="gatt-body">
+          <div class="gatt-list" id="gattList" role="group" aria-label="Services and characteristics"></div>
+          <div class="gatt-detail" id="gattDetail" role="tabpanel" aria-live="polite"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>The maximum transmission unit (MTU) is a maximum, not a target.</strong> The printer
+      negotiated 185 bytes, but the image protocol writes 48-byte rows with a 10 ms pause. The print
+      head and firmware set the pace; “send faster” is not automatically better. The connection
+      interval — how often the two sides exchange packets — is the other half of the timing story:
+      a longer interval saves power but adds latency.
+    </div>
+  </section>
+
+  <section class="section" id="protocol">
+    <div class="section-head">
+      <div class="section-num">04 / protocol</div>
+      <div>
+        <h2>The printer’s language.</h2>
+        <p class="section-lede">
+          Commands are frames. A frame is an envelope with a manifest and a tamper seal: a magic
+          header, a command byte, a length, a payload, a cyclic redundancy check (CRC), and a
+          terminator.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        The MXW01 frame is <code>22 21 &lt;cmd&gt; 00 &lt;len LE16&gt; &lt;payload&gt; &lt;crc8&gt; FF</code>.
+        <code>LE16</code> means a two-byte little-endian integer: low byte first, then high byte;
+        208 is <code>D0 00</code>, not <code>00 D0</code>. The length counts only the payload. The
+        CRC covers only the payload. The command byte says what the payload means. The printer replies
+        with the same header; a notification may contain part of a frame, multiple frames, or a frame
+        plus extra bytes, so the driver buffers and reassembles.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="frame-title">
+      <div class="lab-head">
+        <strong id="frame-title">Lab 04 — build a frame, watch the CRC</strong>
+        <span>live hex</span>
+      </div>
+      <div class="lab-body">
+        <div class="frame-controls">
+          <div class="field">
+            <label for="cmdSelect">command</label>
+            <select id="cmdSelect">
+              <option value="A1">A1 — status</option>
+              <option value="A2">A2 — intensity</option>
+              <option value="A9" selected>A9 — print request</option>
+              <option value="AD">AD — flush / end data</option>
+              <option value="AB">AB — battery</option>
+              <option value="B1">B1 — firmware</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="payloadInput">payload (hex)</label>
+            <input id="payloadInput" type="text" value="D0 00 30 00" spellcheck="false" autocomplete="off" />
+          </div>
+        </div>
+        <div class="frame-tools">
+          <label class="checkline"><input type="checkbox" id="crcSteps" /> show CRC steps</label>
+          <button class="btn small" id="copyFrame" type="button">Copy hex</button>
+          <span class="lab-note" id="cmdNote" style="margin:0"></span>
+        </div>
+        <div class="frame-output">
+          <div class="frame-bytes" id="frameBytes" aria-live="polite"></div>
+          <div class="frame-legend" aria-hidden="true">
+            <span class="l-cmd">command</span>
+            <span class="l-len">length</span>
+            <span class="l-payload">payload</span>
+            <span class="l-crc">CRC-8</span>
+            <span class="l-end">terminator</span>
+          </div>
+          <p class="frame-summary" id="frameSummary"></p>
+          <div class="crc-steps" id="crcStepsBox" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose" style="margin-top:28px">
+      <p>
+        CRC-8 is a checksum, not encryption. It detects accidental corruption. The variant matters:
+        polynomial <code>0x07</code>, initial value <code>0x00</code>, no reflection, final XOR
+        <code>0x00</code>, payload only. A different “CRC-8” can produce a different byte and the
+        printer will silently ignore the frame.
+      </p>
+      <p>
+        The print sequence is: status (<code>A1</code>) → intensity (<code>A2</code>) → print request
+        (<code>A9</code>) → image rows on <code>ae03</code> → flush (<code>AD</code>) → wait for
+        complete (<code>AA</code>). <code>A9</code> means “job accepted”; <code>AA</code> means
+        “physical print finished.” Missing <code>AA</code> is not proof of failure.
+      </p>
+      <p>
+        Feed is part of the raster, not an afterthought: the driver appends blank rows and includes
+        them in the <code>A9</code> height, so the tear-off margin is deterministic. For a 128-row
+        render with 80 feed rows, the printer is told to print 208 rows.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="render">
+    <div class="section-head">
+      <div class="section-num">05 / render</div>
+      <div>
+        <h2>From text to dots.</h2>
+        <p class="section-lede">
+          The printer is a 384-pixel-wide, 1-bit display. Rendering is the part users actually see:
+          text is drawn on a grayscale canvas with real fonts and measured widths, then thresholded
+          to black and white.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        Photos are dithered to suggest gray. Quick-response (QR) codes are resized with nearest-neighbor interpolation
+        so the module edges stay crisp. The renderer is where a receipt becomes readable rather than
+        a smudge.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="raster-title">
+      <div class="lab-head">
+        <strong id="raster-title">Lab 05 — pack a row</strong>
+        <span>click pixels; compare conventions</span>
+      </div>
+      <div class="lab-body">
+        <div class="raster-wrap">
+          <div>
+            <div class="pixel-paper">
+              <div class="pixel-grid" id="pixelGrid" role="grid" aria-label="8 by 8 pixel editor"></div>
+            </div>
+            <div class="raster-tools">
+              <button class="btn small" id="rasterSample" type="button">Sample</button>
+              <button class="btn small" id="rasterClear" type="button">Clear</button>
+              <button class="btn small" id="rasterFill" type="button">Fill</button>
+            </div>
+            <p class="raster-legend">paper is white · dark is black</p>
+          </div>
+          <div class="raster-table-wrap">
+            <table class="raster-table">
+              <thead>
+                <tr>
+                  <th>row</th>
+                  <th class="printer-col">printer · 1 = black · LSB first</th>
+                  <th class="pillow-col">Pillow · 0 = black · MSB first</th>
+                </tr>
+              </thead>
+              <tbody id="rasterRows"></tbody>
+            </table>
+            <p class="lab-note">
+              Same eight pixels, two conventions. The driver flips the polarity and reverses the
+              bit order before sending. That is why a picture can look perfect in preview and come
+              out inverted or shifted on paper.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose" style="margin-top:30px">
+      <p>
+        Two typography bugs made the rendering layer concrete. First, <strong>baseline alignment</strong>:
+        words without ascenders (<code>aaa</code>) sat higher than words with ascenders
+        (<code>haa</code>) because each run was anchored to its own glyph box top. The fix was to
+        compute a shared baseline from font metrics and draw every run with <code>anchor="ls"</code>.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="baseline-title">
+      <div class="lab-head">
+        <strong id="baseline-title">Lab 06 — the baseline bug</strong>
+        <span>exaggerated for clarity</span>
+      </div>
+      <div class="lab-body">
+        <div class="type-stage" id="baselineStage" data-mode="top">
+          <div class="type-words" aria-hidden="true">
+            <span class="tall">haa</span>
+            <span class="short">aaa</span>
+          </div>
+        </div>
+        <div class="type-controls">
+          <button class="btn small" id="baselineBtn" type="button" aria-pressed="false">Show the fix</button>
+          <p class="lab-note" id="baselineCaption" aria-live="polite">Top alignment: the short word floats above the shared line.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="prose" style="margin-top:30px">
+      <p>
+        Second, <strong>receipt columns</strong>: padding with spaces assumes every character has the
+        same width. Proportional fonts and mixed runs break that assumption. The fix was to split on
+        two or more spaces, measure the right column in pixels, and draw it at the right edge.
+      </p>
+    </div>
+
+    <div class="callout">
+      <strong>In a 1-bit medium, layout is not decoration.</strong> It is the difference between a
+      receipt and a smudge. The radio is commodity engineering; the renderer is the product.
+    </div>
+  </section>
+
+  <section class="section" id="bridge">
+    <div class="section-head">
+      <div class="section-num">06 / bridge</div>
+      <div>
+        <h2>One printer, three front doors.</h2>
+        <p class="section-lede">
+          A single BLE connection cannot be shared by a command-line tool, a browser, and an agent
+          that each connect directly. The bridge is a local daemon that owns the connection and
+          exposes a small local HTTP (Hypertext Transfer Protocol) application programming interface
+          (API).
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p>
+        The command-line interface (CLI), web user interface (UI), and OpenCode plugin all go
+        through the same printer manager. That consistency is the point: a fix in the renderer
+        improves every front door. The same manager also supports the LuckPrinter/DP-L1S family, a
+        serial Epson Standard Code for Point of Sale (ESC/POS) path, and a mock printer for
+        development; protocol auto-detection picks the right transport.
+      </p>
+    </div>
+
+    <div class="lab" aria-labelledby="doors-title">
+      <div class="lab-head">
+        <strong id="doors-title">Lab 07 — choose a front door</strong>
+        <span>same printer underneath</span>
+      </div>
+      <div class="lab-body">
+        <div class="door-tabs" role="tablist" aria-label="Ways to print">
+          <button class="door-tab active" type="button" role="tab" aria-selected="true" data-door="cli">CLI</button>
+          <button class="door-tab" type="button" role="tab" aria-selected="false" data-door="web">Web UI</button>
+          <button class="door-tab" type="button" role="tab" aria-selected="false" data-door="agent">OpenCode</button>
+        </div>
+        <div class="door-panel active" id="door-cli" role="tabpanel">
+          <p>Fast, scriptable, terminal-native. It uses the daemon if it is healthy, otherwise it connects directly.</p>
+          <pre><code><span class="c"># one note</span>
+uv run thermal print <span class="s">"The build is green."</span> \
+  --title <span class="s">"BUILD COMPLETE"</span>
+
+<span class="c"># a task list</span>
+uv run thermal print --style task --title <span class="s">"TODAY"</span> \
+  <span class="s">"[x] review the diff
+[ ] fix the flaky test
+[ ] take a walk"</span>
+
+<span class="c"># preview without paper</span>
+uv run thermal print <span class="s">"Hello"</span> --dry-run</code></pre>
+        </div>
+        <div class="door-panel" id="door-web" role="tabpanel" hidden>
+          <p>Visual, preview-first, and good for composing and connecting. The interface is plain Hypertext Markup Language (HTML), Cascading Style Sheets (CSS), and JavaScript (JS); no build step.</p>
+          <pre><code><span class="c"># start the daemon and open the browser</span>
+uv run thermal serve --open
+
+<span class="c"># if it is already running</span>
+open http://127.0.0.1:8787</code></pre>
+          <p style="margin-top:12px">Type, watch the 384 px preview, then print. History keeps the last jobs and their Portable Network Graphics (PNG) previews.</p>
+        </div>
+        <div class="door-panel" id="door-agent" role="tabpanel" hidden>
+          <p>The agent calls a tool instead of asking you to copy text into a terminal. The plugin health-checks the daemon, starts it detached if needed, and posts the job.</p>
+          <pre><code><span class="c">// the agent sees a tool like this</span>
+thermal.print({
+  title: <span class="s">"BUILD COMPLETE"</span>,
+  message: <span class="s">"Tests pass. Docs updated. Shipped."</span>,
+  style: <span class="s">"note"</span>
+})</code></pre>
+          <p style="margin-top:12px">A companion skill tells the agent to keep output short, prefer dry-run when unsure, and never print secrets. An optional approval step can require a human before paper moves.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="lab" aria-labelledby="journey-title">
+      <div class="lab-head">
+        <strong id="journey-title">Lab 08 — send a note</strong>
+        <span>compressed timeline</span>
+      </div>
+      <div class="lab-body">
+        <div class="journey-track" aria-hidden="true">
+          <div class="stage" data-stage="render">render</div>
+          <div class="stage" data-stage="pack">pack</div>
+          <div class="stage" data-stage="frame">frame</div>
+          <div class="stage" data-stage="send">send</div>
+          <div class="stage" data-stage="flush">flush</div>
+          <div class="stage" data-stage="done">finish</div>
+        </div>
+        <div class="journey-bar" aria-hidden="true"><span id="journeyBar"></span></div>
+        <p class="journey-log" id="journeyLog" aria-live="polite">Ready. This is the path a short note takes.</p>
+        <div class="frame-tools">
+          <button class="btn small primary" id="journeyBtn" type="button">Print a short note</button>
+          <span class="lab-note" style="margin:0">The animation is compressed; the real job takes 8–10 seconds.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Physical state is part of the API.</strong> If the printer is asleep or the phone app
+      owns the connection, no amount of HTTP will fix it: wake the printer, force-quit Fun Print,
+      reconnect. A good error says that, not “connection failed.”
+    </div>
+
+    <div class="prose" style="margin-top:28px">
+      <p>
+        <code>thermal serve</code> starts the server and blocks in the foreground.
+        <code>thermal serve --open</code> does the same and also opens a browser after 0.8 seconds;
+        it does <em>not</em> daemonize. The plugin starts a detached server, health-checks it, and
+        reuses it. If port 8787 is already in use, open the existing UI or stop the old process.
+      </p>
+    </div>
+  </section>
+
+  <section class="section" id="bugs">
+    <div class="section-head">
+      <div class="section-num">07 / bugs</div>
+      <div>
+        <h2>What broke, and what it taught.</h2>
+        <p class="section-lede">
+          Every bug was a layer boundary in disguise. The symptom looked like “the printer is
+          broken”; the cause was almost always one wrong assumption about a lower layer.
+        </p>
+      </div>
+    </div>
+
+    <div class="bug-grid">
+      <article class="bug">
+        <span class="tag">wrong family</span>
+        <h3>The device name is a hint.</h3>
+        <p>The MXW01 is not a LuckPrinter. GATT layout is the fingerprint, so the manager detects the mismatch and retries with the suggested protocol.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">red herring</span>
+        <h3><code>af30</code> is not <code>ae30</code>.</h3>
+        <p>The advertised service was not the command service. Connect, enumerate GATT, and use the real table: <code>ae30</code>/<code>ae01</code>/<code>ae02</code>/<code>ae03</code>.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">checksum</span>
+        <h3>“CRC-8” is ambiguous.</h3>
+        <p>The Dallas/Maxim variant gives <code>0xA1</code> for <code>123456789</code>; this protocol’s non-reflected <code>0x07</code> variant gives <code>0xF4</code>. Specify every parameter.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">raster</span>
+        <h3>Bit order and polarity both flipped.</h3>
+        <p>Pillow packs <code>0 = black</code>, MSB first. The MXW01 wants <code>1 = black</code>, LSB first. The driver inverts each byte and reverses the bit order.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">typography</span>
+        <h3>Top alignment is not baseline alignment.</h3>
+        <p>Each text run was anchored to its own glyph box top. A shared baseline from font metrics fixed the jitter and got a regression test.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">layout</span>
+        <h3>Spaces are not a ruler.</h3>
+        <p>Receipt amounts padded with spaces did not line up. The fix measures the right column in pixels and draws it at the right edge.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">acks</span>
+        <h3>Missing <code>AA</code> is not failure.</h3>
+        <p>Notifications can be dropped. The print may still have happened. Report <code>acked: false</code>, but do not claim the paper is blank.</p>
+      </article>
+      <article class="bug">
+        <span class="tag">state</span>
+        <h3>The printer sleeps and owns one connection.</h3>
+        <p>BLE peripherals are stateful and single-owner. Wake the printer, force-quit the phone app, and retry. This is physical state, not a web bug.</p>
+      </article>
+    </div>
+
+    <ol class="ladder">
+      <li>Check physical state: power, paper, cover, battery, sleep, phone app.</li>
+      <li>Scan. Confirm the device is advertising; note name, address, signal strength (RSSI), services.</li>
+      <li>Connect and dump GATT. Record every service, characteristic, property, and handle.</li>
+      <li>Identify write, notify, and data characteristics. Do not trust the advertisement.</li>
+      <li>Subscribe to notifications. Confirm the CCCD write succeeds.</li>
+      <li>Send a known query, such as <code>A1 00</code>, and capture the raw reply.</li>
+      <li>Find the framing: magic, length, command, checksum, terminator.</li>
+      <li>Change one variable at a time. Use known-answer tests. Preview before printing.</li>
+    </ol>
+  </section>
+
+  <section class="section" id="lessons">
+    <div class="section-head">
+      <div class="section-num">08 / lessons</div>
+      <div>
+        <h2>Why it matters.</h2>
+        <p class="section-lede">
+          The interesting part is not that a cheap printer can be driven from Python. It is what the
+          exercise says about the devices around us, and about the software we build on top of them.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose">
+      <p><strong>The app is the driver.</strong> These printers are not self-describing. The vendor app contains the protocol knowledge, the rendering rules, and the quirks. When the app dies or demands an account, the hardware becomes e-waste unless someone reverse-engineers the GATT layer.</p>
+      <p><strong>Advertisement is not the API.</strong> The real contract is the GATT table after connection, plus the byte protocol on top. Generic BLE tools should always enumerate, not trust the scan packet.</p>
+      <p><strong>Throughput is not MTU.</strong> The radio can carry 185-byte packets, but the printer expects 48-byte rows with a delay. The print head sets the pace. Measure the whole pipeline, not the radio’s theoretical maximum.</p>
+      <p><strong>A local daemon is a device broker.</strong> Single-connection peripherals need an owner. The broker serializes access, caches state, retries, and gives every front door a stable API. The pattern generalizes to scanners, cameras, serial gadgets, and lab equipment.</p>
+      <p><strong>Constraints clarify.</strong> No color, no grayscale, 384 pixels wide. A receipt forces prioritization. Agent-written output is better when it is short, structured, and physical.</p>
+      <p><strong>Local-first is repairable.</strong> No cloud, no account, no vendor app. The API binds to <code>127.0.0.1</code>; previews stay on the machine. For a device that prints private notes, that matters.</p>
+    </div>
+
+    <div class="callout">
+      <strong>The one-sentence version.</strong> A cheap printer is a small computer with a radio and
+      a secret language; once you learn the language, you can put it behind a local API, a web UI,
+      and an agent tool — and a device that only worked with a phone becomes part of your workflow.
+    </div>
+  </section>
+
+  <section class="section" id="quiz">
+    <div class="section-head">
+      <div class="section-num">09 / check</div>
+      <div>
+        <h2>Check yourself.</h2>
+        <p class="section-lede">Four questions. No score, just the mental model.</p>
+      </div>
+    </div>
+
+    <div class="lab" aria-labelledby="quiz-title">
+      <div class="lab-head">
+        <strong id="quiz-title">Quick check</strong>
+        <span>click an answer</span>
+      </div>
+      <div class="lab-body">
+        <div class="quiz">
+          <div class="quiz-q">
+            <h3>1. In the MXW01 raster, what does a <code>1</code> bit mean?</h3>
+            <div class="quiz-opts">
+              <button class="quiz-opt" type="button" data-correct="true">Black</button>
+              <button class="quiz-opt" type="button" data-correct="false">White</button>
+              <button class="quiz-opt" type="button" data-correct="false">Transparent</button>
+            </div>
+            <p class="quiz-feedback" data-good="Right. The MXW01 uses 1 = black; Pillow’s 1-bit mode is the opposite." data-bad="Not quite. The driver flips Pillow’s polarity so that 1 means black." aria-live="polite"></p>
+          </div>
+          <div class="quiz-q">
+            <h3>2. Which service is the real command service?</h3>
+            <div class="quiz-opts">
+              <button class="quiz-opt" type="button" data-correct="false"><code>af30</code></button>
+              <button class="quiz-opt" type="button" data-correct="true"><code>ae30</code></button>
+              <button class="quiz-opt" type="button" data-correct="false"><code>ff00</code></button>
+            </div>
+            <p class="quiz-feedback" data-good="Right. af30 is advertised; ff00 is the LuckPrinter fallback; MXW01 commands live on ae30." data-bad="Not quite. af30 is the advertisement, and ff00 is the LuckPrinter fallback. The MXW01 command service is ae30." aria-live="polite"></p>
+          </div>
+          <div class="quiz-q">
+            <h3>3. Why does a short receipt take about 8–10 seconds?</h3>
+            <div class="quiz-opts">
+              <button class="quiz-opt" type="button" data-correct="false">BLE is inherently slow</button>
+              <button class="quiz-opt" type="button" data-correct="true">48-byte rows, 10 ms pacing, and the print head</button>
+              <button class="quiz-opt" type="button" data-correct="false">The CRC is expensive</button>
+            </div>
+            <p class="quiz-feedback" data-good="Right. The radio is not the bottleneck; row cadence and the physical print head are." data-bad="Not quite. The radio has plenty of bandwidth; the 48-byte rows, 10 ms pacing, and print head set the real speed." aria-live="polite"></p>
+          </div>
+          <div class="quiz-q">
+            <h3>4. If the <code>AA</code> completion notification never arrives, did the print fail?</h3>
+            <div class="quiz-opts">
+              <button class="quiz-opt" type="button" data-correct="false">Always</button>
+              <button class="quiz-opt" type="button" data-correct="true">Not necessarily</button>
+              <button class="quiz-opt" type="button" data-correct="false">Only if <code>A9</code> was missing too</button>
+            </div>
+            <p class="quiz-feedback" data-good="Right. Notifications can be dropped; the physical print may still have happened." data-bad="Not quite. Notifications can be dropped, so a missing AA is not proof of failure." aria-live="polite"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="glossary">
+    <details>
+      <summary>Glossary: the acronyms, quickly</summary>
+      <div class="glossary-grid">
+        <div><b>ACK</b><span>Acknowledgement: a message that says “I received it.”</span></div>
+        <div><b>BLE</b><span>Bluetooth Low Energy: the low-power radio used by the printer.</span></div>
+        <div><b>Central</b><span>The BLE side that scans and initiates a connection; the laptop.</span></div>
+        <div><b>Peripheral</b><span>The BLE side that advertises and waits; the printer.</span></div>
+        <div><b>GATT</b><span>Generic Attribute Profile: the database of services and characteristics.</span></div>
+        <div><b>ATT</b><span>Attribute Protocol: the BLE operations GATT is built on.</span></div>
+        <div><b>UUID</b><span>Universally Unique Identifier: the 128-bit name of a service or characteristic.</span></div>
+        <div><b>CCCD</b><span>Client Characteristic Configuration Descriptor: the notification subscription switch.</span></div>
+        <div><b>MTU</b><span>Maximum Transmission Unit: the largest packet a link can carry.</span></div>
+        <div><b>RSSI</b><span>Received Signal Strength Indicator: a radio signal strength hint in dBm.</span></div>
+        <div><b>CRC</b><span>Cyclic Redundancy Check: a checksum for detecting accidental corruption.</span></div>
+        <div><b>LSB</b><span>Least Significant Bit: the bit with value 1; first in LSB-first packing.</span></div>
+        <div><b>MSB</b><span>Most Significant Bit: the bit with value 128; first in MSB-first packing.</span></div>
+        <div><b>DPI</b><span>Dots Per Inch: print resolution; 203 dpi here.</span></div>
+        <div><b>ESC/POS</b><span>Epson Standard Code for Point of Sale: a receipt-printer command family.</span></div>
+        <div><b>UART</b><span>Universal Asynchronous Receiver/Transmitter: a common serial interface.</span></div>
+        <div><b>SPI</b><span>Serial Peripheral Interface: a synchronous four-wire chip bus.</span></div>
+        <div><b>I²C</b><span>Inter-Integrated Circuit: a two-wire synchronous chip bus.</span></div>
+        <div><b>HCI</b><span>Host Controller Interface: the boundary between the BLE host and radio controller.</span></div>
+        <div><b>GAP</b><span>Generic Access Profile: discovery, advertising, and connection basics.</span></div>
+        <div><b>SIG</b><span>Special Interest Group: the Bluetooth SIG maintains the specifications.</span></div>
+        <div><b>API</b><span>Application Programming Interface: a defined way for programs to call each other.</span></div>
+        <div><b>ASCII</b><span>American Standard Code for Information Interchange: a 7-bit character code; A = 65.</span></div>
+        <div><b>CLI</b><span>Command-Line Interface: a text interface in a terminal.</span></div>
+        <div><b>UI / UX</b><span>User Interface / User Experience: what you interact with, and how it feels.</span></div>
+        <div><b>HTTP</b><span>Hypertext Transfer Protocol: the request/response protocol of the web.</span></div>
+        <div><b>HTML</b><span>Hypertext Markup Language: the structure of a web page.</span></div>
+        <div><b>CSS</b><span>Cascading Style Sheets: the visual styling of a web page.</span></div>
+        <div><b>JS</b><span>JavaScript: the programming language of web browsers.</span></div>
+        <div><b>JSON</b><span>JavaScript Object Notation: a text format for structured data.</span></div>
+        <div><b>REST</b><span>Representational State Transfer: a style of HTTP API design.</span></div>
+        <div><b>ASGI</b><span>Asynchronous Server Gateway Interface: Python’s async web-app interface.</span></div>
+        <div><b>SDK</b><span>Software Development Kit: a vendor’s library and tools.</span></div>
+        <div><b>QR</b><span>Quick Response: a two-dimensional barcode.</span></div>
+        <div><b>PNG</b><span>Portable Network Graphics: a lossless image format used for previews.</span></div>
+        <div><b>dBm</b><span>Decibels relative to one milliwatt: the unit for radio power and RSSI.</span></div>
+        <div><b>LE16</b><span>Little-endian 16-bit: a two-byte integer with the low byte first.</span></div>
+      </div>
+    </details>
+  </div>
+  </div>
+
+  <div class="view-panel" id="view-story" role="tabpanel" aria-labelledby="tab-story" hidden>
+    <section class="story-hero" id="story-top">
+      <p class="kicker">The full narrative · a consulting point of view</p>
+      <h1>From a keypress<br>to a <em>heated dot.</em></h1>
+      <p class="standfirst">
+        One note. Five layers. A single chain of cause and effect from a Python string to a resistor
+        warming thermal paper. No electronics, radio, or Bluetooth background assumed. The goal is
+        not to memorize the stack; it is to see why each layer exists and what your code is actually
+        doing when it says “print.”
+      </p>
+      <div class="meta-row">
+        <span class="chip">MXW01</span>
+        <span class="chip">384 heaters</span>
+        <span class="chip">BLE</span>
+        <span class="chip">GATT</span>
+        <span class="chip">~14 min</span>
+      </div>
+    </section>
+
+    <div class="answer-wrap" id="story-answer">
+      <div class="answer-card">
+        <p class="eyebrow">The answer in one page</p>
+        <ol class="answer-list">
+          <li><strong>The printer is a 1-bit thermal array.</strong> 384 tiny resistors, each heated or not; 48 bytes per row; heat turns coated paper black.</li>
+          <li><strong>BLE is a packet radio with a database.</strong> Laptop central, printer peripheral; advertise, connect, then read the GATT table.</li>
+          <li><strong>The advertisement is a label, not the command endpoint.</strong> <code>af30</code> is a UUID in a broadcast; <code>ae30</code> is a service in the connected GATT table; the command is an ATT write to a handle.</li>
+          <li><strong>Your code is a translator and a broker.</strong> Render, pack, frame, write, wait; a daemon owns the single connection.</li>
+          <li><strong>The height bug is a coordinate bug.</strong> Runs were anchored to their own ink-box top; tall vs no-tall words exposed it; font metrics and a shared baseline fix it.</li>
+        </ol>
+      </div>
+      <nav class="story-toc" aria-label="In this narrative">
+        <p class="eyebrow">In this narrative</p>
+        <a href="#story-physics"><span>01</span> The physical layer</a>
+        <a href="#story-ble"><span>02</span> The radio link</a>
+        <a href="#story-gatt"><span>03</span> The device layer</a>
+        <a href="#story-advert"><span>04</span> Advertised vs command</a>
+        <a href="#story-protocol"><span>05</span> The printer’s language</a>
+        <a href="#story-code"><span>06</span> The control loop</a>
+        <a href="#story-height"><span>07</span> The height bug</a>
+        <a href="#story-operating"><span>08</span> The operating model</a>
+      </nav>
+    </div>
+
+    <div class="scr">
+      <div><span>Situation</span><p>A small thermal printer works only through a phone app. The goal is to print from a laptop, a web page, and a coding agent.</p></div>
+      <div><span>Complication</span><p>The obvious assumptions are wrong: the advertised service is not the API, commands are binary, and text layout is pixel layout.</p></div>
+      <div><span>Resolution</span><p>Model five layers — physical, radio, GATT, protocol, software — and build a renderer, a protocol encoder, a GATT client, and a broker.</p></div>
+    </div>
+
+    <section class="story-section" id="story-physics">
+      <div class="story-head">
+        <div class="num">01</div>
+        <div>
+          <h2>Physics first: the output is heat.</h2>
+          <p class="story-lede">
+            Before there is a packet, there is a resistor, a pulse of current, and a paper coating
+            that changes color when it gets hot enough. The protocol exists to control that physics.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          Thermal paper is a base sheet coated with a colorless dye and a developer. Above a threshold
+          temperature they react and the coating turns dark. Darkness depends on heat, time, pressure,
+          and paper — which is why density changes energy, not color.
+        </p>
+        <p>
+          The print head is a line of <strong>384 tiny resistors</strong>. Current through each resistor
+          becomes heat. A shift register and latch select the row; a <strong>strobe</strong> pulse
+          times the heat; the paper advances one row. At 203 dpi, 384 dots span about 48 mm.
+        </p>
+        <p>
+          For a reader who has never studied electronics: <strong>voltage</strong> is electrical
+          pressure, <strong>current</strong> is flow, and <strong>resistance</strong> is restriction.
+          <strong>Power</strong> is energy per second; <strong>energy</strong> is total heat. Ohm’s law
+          is <code>V = I × R</code>; power is <code>P = V × I</code>. A logic <code>1</code> is a
+          voltage range that turns a switch on; <code>0</code> turns it off. A
+          <strong>microcontroller</strong> is a small computer; <strong>firmware</strong> is its program;
+          a <strong>driver</strong> is software that speaks to hardware.
+        </p>
+        <p>
+          Each dot is a binary decision: heat or no heat. 384 decisions are 384 bits, or
+          <strong>48 bytes</strong>. Gray is approximated by dithering or multi-level modes; the MXW01
+          monochrome path uses one bit. The printer is also a state machine: paper sensor, cover,
+          battery, thermistor, sleep, and one BLE connection.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 1</strong><span>The physical chain</span></div>
+        <div class="exhibit-body">
+          <div class="flow">
+            <div><b>1</b><span>content</span></div>
+            <div><b>2</b><span>1-bit bitmap</span></div>
+            <div><b>3</b><span>384-bit row</span></div>
+            <div><b>4</b><span>latch + strobe</span></div>
+            <div><b>5</b><span>resistor heat</span></div>
+            <div><b>6</b><span>black dot</span></div>
+          </div>
+          <p class="exhibit-note">
+            The data format is a direct consequence of the hardware: 384 heaters, one bit each,
+            48 bytes per row, one row at a time. There is no “page description language” hiding in
+            the print head.
+          </p>
+        </div>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> The printer’s physical constraints define the contract your
+        software must satisfy: 384 pixels wide, 1 bit per pixel, 48 bytes per row, and a paper-feed
+        model measured in rows. Every later layer exists to deliver those bits at the right time.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-ble">
+      <div class="story-head">
+        <div class="num">02</div>
+        <div>
+          <h2>The radio link: BLE is a packet service.</h2>
+          <p class="story-lede">
+            Bluetooth Low Energy does not replace a wire with a continuous stream. It replaces it
+            with a scheduled exchange of small packets on a shared radio channel.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          BLE uses the <strong>2.4 GHz</strong> band, shared with Wi-Fi and classic Bluetooth. It uses
+          40 channels — three advertising, 37 data — and hops to reduce interference. It modulates
+          with <strong>GFSK</strong> (Gaussian Frequency-Shift Keying). The <strong>central</strong>
+          (laptop) scans and initiates; the <strong>peripheral</strong> (printer) advertises and waits.
+          These are radio roles, not power rankings.
+        </p>
+        <p>
+          Before any connection, the printer advertises a small packet on the advertising channels.
+          The legacy payload is at most 31 bytes, packed as <strong>AD structures</strong>: length,
+          type, value. A typical packet carries flags, the device name, and a list of service UUIDs.
+          A service UUID is a label; it is not a command and it does not open a pipe.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 2</strong><span>What an advertisement physically contains</span></div>
+        <div class="exhibit-body">
+          <pre class="hex"><span class="field">02 01 06</span>  <span class="field">06 09 4D 58 57 30 31</span>  <span class="field">03 03 30 AF</span></pre>
+          <div class="table-wrap">
+          <table class="field-table">
+            <thead><tr><th>Bytes</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td>02 01 06</td><td>Flags: length 2, type 1; value 0x06 (LE general discoverable, BR/EDR not supported).</td></tr>
+              <tr><td>06 09 4D 58 57 30 31</td><td>Complete local name: length 6, type 9; ASCII “MXW01”.</td></tr>
+              <tr><td>03 03 30 AF</td><td>Complete list of 16-bit service UUIDs: length 3, type 3; UUID 0xAF30, little-endian.</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="exhibit-note">
+            Illustrative advertisement. Real firmware may add transmit power, manufacturer data, a
+            scan response, or other AD structures. The key point is that <code>af30</code> is a
+            service label inside this broadcast payload — not a command channel.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          To connect, the central sends a <strong>CONNECT_IND</strong> with an access address, CRC
+          initialization value, connection interval, peripheral latency, supervision timeout, channel
+          map, and hop increment. The two sides then wake at each <strong>connection event</strong>,
+          exchange packets on a data channel, and hop. The <strong>connection interval</strong> is how
+          often those events occur; <strong>latency</strong> lets the peripheral skip events;
+          <strong>supervision timeout</strong> is when the link is declared lost.
+        </p>
+        <p>
+          Every transmission is a link-layer <strong>packet</strong>: a <strong>preamble</strong>, a
+          4-byte <strong>access address</strong>, a <strong>PDU</strong>, and a 3-byte
+          <strong>CRC</strong>. The controller builds and checks these; the application never does.
+          Inside a data packet, <strong>L2CAP</strong> adds a length and channel ID, then
+          <strong>ATT</strong> carries read, write, notify, or discovery PDUs. <strong>HCI</strong> is
+          the boundary between the OS host and the radio controller. Bleak talks to the OS; the OS and
+          controller handle HCI, scheduling, packets, and retries.
+        </p>
+        <p>
+          <strong>MTU</strong> is the largest ATT payload. The default is 23 bytes; three bytes of ATT
+          header leave 20 bytes of value. This printer negotiated 185 bytes, so 182 bytes of value —
+          but the image protocol still writes 48-byte rows. The MTU is a ceiling, not a target.
+        </p>
+        <p>
+          Reliability is layered. The link layer uses CRC and acknowledgements, and retransmits within
+          the connection. At ATT, a <strong>notification</strong> is unacknowledged; it can be missed
+          if the client did not subscribe or the link dropped.
+        </p>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> BLE gives you a reliable packet pipe, not a reliable application
+        conversation. Your code must still manage subscriptions, timeouts, retries, and physical
+        state. The radio is not the hard part; the state machine on top of it is.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-gatt">
+      <div class="story-head">
+        <div class="num">03</div>
+        <div>
+          <h2>The device layer: GATT is the printer’s API.</h2>
+          <p class="story-lede">
+            Once the radio link exists, the laptop needs a way to name and reach the printer’s
+            capabilities. GATT is that naming system and database.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          <strong>GATT</strong> stands for Generic Attribute Profile. It is built on
+          <strong>ATT</strong>, the Attribute Protocol. The printer’s firmware holds an
+          <strong>attribute table</strong>: rows with a 16-bit <strong>handle</strong> (address), a
+          <strong>UUID</strong> (type), permissions, a value, and a callback.
+        </p>
+        <p>
+          The table is organized into <strong>services</strong> (groups) and
+          <strong>characteristics</strong> (values with properties). A <strong>descriptor</strong> is
+          metadata; the <strong>CCCD</strong> is the descriptor that switches notifications. UUIDs are
+          names; handles are addresses. The printer assigns handles, so a driver discovers the table
+          and maps UUIDs to handles.
+        </p>
+        <p>
+          The client sends ATT discovery requests — “read by group type” for services, “read by type”
+          for characteristics — and the printer returns handle ranges and UUIDs.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 3</strong><span>The discovered MXW01 table</span></div>
+        <div class="exhibit-body">
+          <div class="table-wrap">
+          <table class="field-table">
+            <thead><tr><th>Handle</th><th>UUID</th><th>Properties</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td>0x0010</td><td>ae30</td><td>service</td><td>Vendor command service; groups the characteristics below.</td></tr>
+              <tr><td>0x0012</td><td>ae01</td><td>write without response</td><td>Command frames: status, intensity, print request, flush.</td></tr>
+              <tr><td>0x0015</td><td>ae02</td><td>notify</td><td>Printer responses: A1, A9, AA, AB, B1.</td></tr>
+              <tr><td>0x0018</td><td>ae03</td><td>write without response</td><td>Raw 1-bit image rows, 48 bytes each.</td></tr>
+              <tr><td>0x001b</td><td>ae04</td><td>notify</td><td>Secondary notifications; unused by this driver.</td></tr>
+              <tr><td>0x001d</td><td>ae05</td><td>indicate</td><td>Secondary indications; unused by this driver.</td></tr>
+              <tr><td>0x0020</td><td>ae10</td><td>read / write</td><td>Vendor configuration block; unused here.</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="exhibit-note">
+            Handles are illustrative. The UUIDs and properties are the contract; the handle numbers
+            are assigned by the printer and should be discovered at runtime.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          A GATT <strong>write</strong> can be a <strong>Write Request</strong> (the server returns an
+          ATT response) or a <strong>Write Command</strong> (no ATT response). The MXW01 uses
+          write-without-response for commands and image data, so feedback comes from its own protocol
+          replies, not from ATT.
+        </p>
+        <p>
+          A <strong>notification</strong> is an unacknowledged value push; an
+          <strong>indication</strong> is acknowledged at the ATT layer. To receive notifications, the
+          client writes <code>0x0001</code> to the CCCD; indications use <code>0x0002</code>. Without
+          that subscription, the printer has no reason to send.
+        </p>
+        <p>
+          Physically, a write is a packet with a handle and a value. The GATT server checks permissions
+          and invokes the callback: <code>ae01</code> parses a frame, <code>ae03</code> appends image
+          bytes, <code>ae02</code> pushes a notification.
+        </p>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> GATT turns a radio link into a stable, named API. UUIDs tell you
+        what a capability is; handles tell you where it lives; properties tell you what operations are
+        allowed. Discovery is the step that binds the names to the addresses.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-advert">
+      <div class="story-head">
+        <div class="num">04</div>
+        <div>
+          <h2>The red herring: advertised service vs command service.</h2>
+          <p class="story-lede">
+            This is the single most important distinction in the build. The advertisement and the
+            command service are different objects, in different layers, carrying different bytes.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          The MXW01 advertisement listed a service UUID, <code>af30</code>. Commands lived under
+          <code>ae30</code>. It is tempting to read that as “the printer changed its address” or “the
+          app uses a hidden channel.” Neither is what happens.
+        </p>
+        <p>
+          <strong>Physically, <code>af30</code> is a few bytes inside a broadcast packet.</strong> It
+          is an AD structure of type “complete list of 16-bit service UUIDs.” The radio sends it on an
+          advertising channel; anyone nearby can hear it. There is no connection, handle, GATT
+          operation, or command queue. It is a label the firmware chose to broadcast — a claim about a
+          service, not a route to it.
+        </p>
+        <p>
+          <strong>Physically, <code>ae30</code> is a row in the printer’s GATT attribute table after
+          the connection is established.</strong> It groups characteristics such as
+          <code>ae01</code> (commands), <code>ae02</code> (notifications), and <code>ae03</code> (image
+          data). Each has a handle assigned by the printer. A command is an ATT Write Command
+          addressed to <code>ae01</code>’s handle, with a specific value.
+        </p>
+        <p>
+          Why differ? Advertising space is tiny; firmware may advertise a related profile or a
+          default/stale service list. Only GATT discovery is authoritative. The advertisement is a
+          shop sign; the GATT table is the menu.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 4</strong><span>Two different objects</span></div>
+        <div class="exhibit-body">
+          <div class="compare-grid">
+            <div class="compare-card">
+              <span class="tag">Advertisement</span>
+              <h3><code>af30</code></h3>
+              <p>A service UUID list entry in a broadcast packet. No connection. No handle. No command. It is a hint, and it may be stale or incomplete.</p>
+            </div>
+            <div class="compare-card">
+              <span class="tag">Command service</span>
+              <h3><code>ae30</code></h3>
+              <p>A service in the connected GATT table. Its characteristics have handles and callbacks. A command is an ATT write to the handle of <code>ae01</code>.</p>
+            </div>
+          </div>
+          <p class="exhibit-note">
+            The advertisement is heard before the connection. The GATT table is read after the
+            connection. They are not two names for the same thing.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          <strong>Is the computer sending packets?</strong> Yes. After connection, every GATT
+          operation is a packet. The app does not assemble the radio packet; the OS and controller do.
+          It builds the ATT PDU, wraps it in L2CAP and a link-layer PDU, adds the access address and
+          CRC, and transmits on a data channel.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 5</strong><span>One command, layer by layer</span></div>
+        <div class="exhibit-body">
+          <div class="packet-stack">
+            <div class="packet-layer"><b>Link layer</b><span>preamble · access address · data PDU · CRC. The controller adds these; the access address is assigned at connection.</span></div>
+            <div class="packet-layer"><b>L2CAP</b><span><code>0C 00</code> length (12 bytes) · <code>04 00</code> ATT channel ID.</span></div>
+            <div class="packet-layer"><b>ATT</b><span><code>52</code> Write Command · <code>21 00</code> handle (illustrative) · then the value.</span></div>
+            <div class="packet-layer"><b>Value</b><span><code>22 21 A1 00 01 00 00 00 FF</code> — the MXW01 status frame.</span></div>
+          </div>
+          <p class="exhibit-note">
+            The <code>0x52</code> opcode and the MXW01 frame are exact. The handle is illustrative; it
+            is whatever the printer assigned to <code>ae01</code> during discovery. The radio packet
+            also contains fields not drawn here, including the PDU header and CRC.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          A notification is an ATT Handle Value Notification: opcode <code>0x1B</code>, a handle, a
+          value. An <code>AA</code> event might be <code>1B 2A 00</code> +
+          <code>22 21 AA 00 00 00 00 FF</code>. The handle is illustrative; the frame is the protocol.
+        </p>
+        <p>
+          This is why “send it to <code>af30</code>” is not meaningful. There is no <code>af30</code>
+          mailbox in the connected attribute table. The advertisement bytes are metadata; the command
+          path is a discovered handle inside <code>ae30</code>.
+        </p>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> Never build a driver from advertising data. Scan to find the device,
+        connect to establish the link, discover the GATT table, and map UUIDs to handles. The
+        advertisement tells you the printer exists; the GATT table tells you how to control it.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-protocol">
+      <div class="story-head">
+        <div class="num">05</div>
+        <div>
+          <h2>The printer’s language: frames, CRC, and rows.</h2>
+          <p class="story-lede">
+            The printer does not receive a document. It receives a short sequence of commands and a
+            stream of packed image rows. The frame is the envelope around each command.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          The MXW01 command frame is
+          <code>22 21 &lt;cmd&gt; 00 &lt;len LE16&gt; &lt;payload&gt; &lt;crc8&gt; FF</code>.
+          <code>LE16</code> means a two-byte little-endian integer: low byte first. A length of 4 is
+          <code>04 00</code>; a height of 208 is <code>D0 00</code>. The length counts only the payload;
+          the CRC covers only the payload; <code>FF</code> terminates the frame.
+        </p>
+        <p>
+          <strong>CRC-8</strong> is a mathematical tamper seal, not encryption. This variant uses
+          polynomial <code>0x07</code>, initial value <code>0x00</code>, no reflection, final XOR
+          <code>0x00</code>, over the payload only. A different “CRC-8” can produce a different byte,
+          and the printer will silently ignore the frame.
+        </p>
+        <p>
+          The print path uses <code>A1</code> status, <code>A2</code> intensity, <code>A9</code> print
+          request, <code>AD</code> flush, and <code>AA</code> complete; <code>AB</code> and
+          <code>B1</code> query battery and firmware. The <code>A9</code> payload is height (LE16),
+          <code>0x30</code> for 48 bytes per row, and a mode byte (<code>0x00</code> monochrome).
+        </p>
+        <p>
+          Image data goes to <code>ae03</code> without the frame wrapper. Each row is 48 bytes: 384
+          pixels, one bit each, <code>1 = black</code>, least-significant-bit first. Pillow is the
+          opposite — <code>0 = black</code>, most-significant-bit first — so the driver inverts each
+          byte and reverses the bit order. Feed rows are blank rows appended to the image and included
+          in the <code>A9</code> height.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 6</strong><span>The print job in six steps</span></div>
+        <div class="exhibit-body">
+          <div class="table-wrap">
+          <table class="field-table">
+            <thead><tr><th>Step</th><th>What is sent</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td>1 · status</td><td><code>22 21 A1 00 01 00 00 00 FF</code></td><td>Ask for state, battery, temperature, and errors.</td></tr>
+              <tr><td>2 · intensity</td><td><code>22 21 A2 00 01 00 5D 94 FF</code></td><td>Set heat energy; 0x5D = 93.</td></tr>
+              <tr><td>3 · request</td><td><code>22 21 A9 00 04 00 D0 00 30 00 34 FF</code></td><td>208 rows, 48 bytes/row, monochrome; wait for A9 ack.</td></tr>
+              <tr><td>4 · rows</td><td>208 × 48 bytes on <code>ae03</code></td><td>One row per write, 10 ms apart.</td></tr>
+              <tr><td>5 · flush</td><td><code>22 21 AD 00 01 00 00 00 FF</code></td><td>End of image data.</td></tr>
+              <tr><td>6 · complete</td><td><code>AA</code> notification</td><td>Physical print finished; not guaranteed to arrive.</td></tr>
+            </tbody>
+          </table>
+          </div>
+          <p class="exhibit-note">
+            For 128 content rows plus 80 feed rows: 208 rows × 48 bytes = 9,984 bytes, 208 writes,
+            2.08 s of deliberate pacing, and roughly 8–10 s end to end. The radio is not the bottleneck;
+            the row cadence and print head are.
+          </p>
+        </div>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> The printer is a state machine with a small language. Send the
+        right command, wait for the right acknowledgement, pace the rows, and separate physical
+        completion from “the bytes were written.”
+      </div>
+    </section>
+
+    <section class="story-section" id="story-code">
+      <div class="story-head">
+        <div class="num">06</div>
+        <div>
+          <h2>The control loop: what the codebase is doing.</h2>
+          <p class="story-lede">
+            The code is not “sending a print job.” It is rendering pixels, encoding a protocol,
+            performing GATT operations, and managing a stateful device.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          The application has five jobs: <strong>render</strong> content to a 1-bit bitmap,
+          <strong>pack</strong> each row into 48 bytes, <strong>frame</strong> commands with length and
+          CRC, <strong>transport</strong> over GATT, and <strong>orchestrate</strong> the sequence,
+          retries, and physical state.
+        </p>
+        <p>
+          The call path is a straight line: CLI, web UI, or OpenCode tool → local daemon / printer
+          manager → renderer → protocol builder → MXW01 transport → Bleak → OS Bluetooth → controller
+          → BLE packets → printer.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 7</strong><span>The software call path</span></div>
+        <div class="exhibit-body">
+          <div class="flow">
+            <div><b>1</b><span>CLI · web · agent</span></div>
+            <div><b>2</b><span>daemon + manager</span></div>
+            <div><b>3</b><span>renderer</span></div>
+            <div><b>4</b><span>protocol</span></div>
+            <div><b>5</b><span>GATT transport</span></div>
+            <div><b>6</b><span>radio + paper</span></div>
+          </div>
+          <p class="exhibit-note">
+            The renderer never knows about BLE. The transport never knows about fonts. The manager
+            owns the lifecycle and serializes access to the one connection.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          <strong>Render.</strong> Pillow, the Python imaging library, draws text and images onto a
+          384-pixel-wide grayscale canvas. Fonts, margins, wrapping, baselines, and receipt columns
+          are resolved in pixels; text is thresholded and photos are dithered. The output is a 1-bit
+          image.
+        </p>
+        <p>
+          <strong>Pack and frame.</strong> The protocol layer converts each row to 48 bytes with the
+          MXW01’s polarity and bit order, builds command frames, and computes CRC-8. These are pure
+          functions: same input, same bytes, testable without hardware.
+        </p>
+        <p>
+          <strong>Transport.</strong> Bleak, a Python BLE client, connects, discovers services and
+          characteristics, maps UUIDs to handles, subscribes to <code>ae02</code> through its CCCD,
+          and runs the sequence: status, intensity, print request, rows, flush, completion. It
+          reassembles notifications because a notification may contain a partial frame, multiple
+          frames, or extra bytes.
+        </p>
+        <p>
+          <strong>Orchestrate.</strong> The manager owns one lock, one transport, and one BLE
+          connection. It auto-connects, retries cold starts, serializes print requests, caches status,
+          saves history, and surfaces errors. The daemon exists because one peripheral cannot be
+          shared safely by three front doors.
+        </p>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> The radio is commodity plumbing. The value is in the renderer, the
+        protocol correctness, the state machine, and the user experience around a physical device
+        that sleeps, runs out of paper, and accepts only one owner.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-height">
+      <div class="story-head">
+        <div class="num">07</div>
+        <div>
+          <h2>The height bug: tall letters vs no tall letters.</h2>
+          <p class="story-lede">
+            The printer was rendering correctly. The text was not sitting on the same line. The bug
+            was in the coordinates, and the clue was the difference between <code>haa</code> and
+            <code>aaa</code>.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          In typography, the <strong>baseline</strong> is the line on which most letters sit.
+          <strong>Ascenders</strong> such as <code>h</code>, <code>d</code>, and <code>l</code> reach
+          above it; <strong>descenders</strong> such as <code>g</code>, <code>p</code>, and
+          <code>y</code> hang below. The <strong>x-height</strong> is the height of letters such as
+          <code>a</code>, <code>c</code>, and <code>e</code>. A <strong>glyph</strong> is a drawn
+          shape; its <strong>bounding box</strong> is the rectangle around the ink of a specific string.
+        </p>
+        <p>
+          The renderer originally used Pillow’s <code>anchor="la"</code>, which anchors a run to the
+          top of its own ink box. <code>haa</code> has an ascender; <code>aaa</code> does not. Aligning
+          the two tops puts their baselines at different heights: <code>aaa</code> sits higher. Mixed
+          bold, italic, and code runs showed the same jitter.
+        </p>
+        <p>
+          The fix is to stop treating the ink box as the line. <strong>Font metrics</strong> — ascent
+          and descent — are properties of the font and size, not of a string. The renderer calls
+          <code>font.getmetrics()</code>, computes a shared baseline from the maximum ascent, and draws
+          every run with <code>anchor="ls"</code> (left baseline). The horizontal cursor still advances
+          by measured width; the vertical position is now shared.
+        </p>
+        <p>
+          The regression test uses two words: one with an ascender and one without. It finds their ink
+          columns, groups the words, and asserts that their bottom rows are equal. If the font changes
+          or top anchoring returns, the test fails.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Exhibit 8</strong><span>Top anchoring vs baseline anchoring</span></div>
+        <div class="exhibit-body">
+          <div class="bug-exhibit">
+            <div class="bug-panel">
+              <span class="tag" style="color:#8a5a12;font-family:var(--mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase">Before · anchor="la"</span>
+              <div class="words"><span>haa</span><span class="short">aaa</span></div>
+              <span class="line"></span>
+              <p class="caption">Each run is aligned by its own ink-box top. The word without ascenders floats above the shared line.</p>
+            </div>
+            <div class="bug-panel">
+              <span class="tag" style="color:#8a5a12;font-family:var(--mono);font-size:8px;letter-spacing:.08em;text-transform:uppercase">After · anchor="ls"</span>
+              <div class="words"><span>haa</span><span>aaa</span></div>
+              <span class="line"></span>
+              <p class="caption">A shared baseline from font metrics. Both runs sit on the same line, regardless of ascenders.</p>
+            </div>
+          </div>
+          <p class="exhibit-note">
+            The effect is exaggerated. The principle is exact: line position comes from font metrics,
+            not from the ink of a particular string.
+          </p>
+        </div>
+      </div>
+
+      <div class="so-what">
+        <strong>So what?</strong> In a renderer, “height” is a layout property, not the height of the
+        glyphs in front of you. Use font metrics and a shared baseline; test with words that have
+        ascenders and words that do not. The same discipline applies to receipt columns: measure
+        pixels, not spaces.
+      </div>
+    </section>
+
+    <section class="story-section" id="story-operating">
+      <div class="story-head">
+        <div class="num">08</div>
+        <div>
+          <h2>The operating model: what this means.</h2>
+          <p class="story-lede">
+            The build is a case study in controlling a cheap, stateful, single-owner peripheral. The
+            lessons generalize well beyond this printer.
+          </p>
+        </div>
+      </div>
+
+      <div class="story-body">
+        <p>
+          <strong>1. Design for the medium.</strong> 384 px, 1-bit, thermal: short lines, high
+          contrast, clear hierarchy, deliberate whitespace. The constraint is the product.
+        </p>
+        <p>
+          <strong>2. Trust discovery.</strong> The advertisement said <code>af30</code>; the command
+          service was <code>ae30</code>. Scan, connect, enumerate, map UUIDs to handles. Advertising
+          is a hint.
+        </p>
+        <p>
+          <strong>3. Model physical state.</strong> Paper, cover, battery, temperature, sleep, and
+          connection ownership are part of the API. Say “wake the printer,” not “connection failed.”
+        </p>
+        <p>
+          <strong>4. Broker single-connection devices.</strong> A daemon serializes access, retries,
+          caches state, and gives every front door a stable interface.
+        </p>
+        <p>
+          <strong>5. Measure the pipeline.</strong> 185-byte packets, but 48-byte rows with a 10 ms
+          pause. Measure rows, pacing, acknowledgements, and physical output.
+        </p>
+      </div>
+
+      <div class="exhibit">
+        <div class="exhibit-head"><strong>Decision checklist</strong><span>For any BLE peripheral</span></div>
+        <div class="exhibit-body">
+          <ol style="margin:0;padding-left:1.2em;color:var(--muted);font-size:13px;line-height:1.7">
+            <li>Scan and identify the device by name, address, and advertised services.</li>
+            <li>Connect; do not trust the advertisement as the API.</li>
+            <li>Enumerate every service and characteristic; record UUIDs, properties, and handles.</li>
+            <li>Subscribe to the notification characteristic through its CCCD.</li>
+            <li>Send one known query; capture the raw reply before building a print path.</li>
+            <li>Test one variable at a time; use known-answer tests for frames and pixels.</li>
+            <li>Preview before printing; treat physical state as part of the interface.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="story-close">
+        <p>
+          A cheap printer is a small computer with a radio and a secret language. The phone app was
+          the only translator. Once you can name the layers, you can put the device behind a local
+          API, a web page, and an agent tool — and the app stops being the gatekeeper.
+        </p>
+        <span>The one-sentence version</span>
+      </div>
+
+      <div class="scope">
+        <strong>Scope and caveats.</strong> GATT handles and advertising payloads in the exhibits are
+        illustrative; handles are assigned by firmware, and real packets may include additional
+        fields. The command frames and CRC were verified against an MXW01 on firmware 1.9.3.1.1 from
+        macOS. The Linux/BlueZ path exists in the code but was not hardware-tested for this build.
+      </div>
+    </section>
+
+    <div class="story-defs">
+      <details>
+        <summary>Definitions used in this narrative</summary>
+        <div class="defs-grid">
+          <div><b>Bit</b><span>A single binary digit: 0 or 1.</span></div>
+          <div><b>Byte</b><span>Eight bits; the usual unit of digital data.</span></div>
+          <div><b>Pixel</b><span>A picture element; one dot in the rendered image.</span></div>
+          <div><b>Protocol</b><span>Agreed rules for exchanging data between systems.</span></div>
+          <div><b>State machine</b><span>A system with defined states and allowed transitions between them.</span></div>
+          <div><b>Checksum</b><span>A small value computed from data to detect accidental corruption.</span></div>
+          <div><b>Voltage</b><span>Electrical pressure; the difference in potential between two points.</span></div>
+          <div><b>Current</b><span>The flow of electrical charge through a conductor.</span></div>
+          <div><b>Resistance</b><span>The restriction that limits current; measured in ohms.</span></div>
+          <div><b>Power</b><span>Energy per second; in a resistor, power becomes heat.</span></div>
+          <div><b>Energy</b><span>Total work or heat; power multiplied by time.</span></div>
+          <div><b>Resistor</b><span>A component that converts electrical energy into heat.</span></div>
+          <div><b>Thermal paper</b><span>Paper coated with a dye and developer that darken when heated.</span></div>
+          <div><b>Print head</b><span>The row of heating elements that burns dots into thermal paper.</span></div>
+          <div><b>Density</b><span>The printer’s heat-energy setting; more energy generally means darker dots.</span></div>
+          <div><b>Microcontroller</b><span>A small computer on a chip that runs firmware and controls hardware.</span></div>
+          <div><b>Firmware</b><span>The software permanently running inside the printer.</span></div>
+          <div><b>Thermistor</b><span>A resistor whose resistance changes with temperature; used to sense the print head.</span></div>
+          <div><b>Strobe</b><span>A timed pulse that enables the print-head heaters for one row.</span></div>
+          <div><b>Shift register</b><span>A circuit that accepts bits serially and presents them in parallel to the heaters.</span></div>
+          <div><b>Latch</b><span>A circuit that holds a row of bits steady while the heaters fire.</span></div>
+          <div><b>BLE</b><span>Bluetooth Low Energy: the low-power packet radio used here.</span></div>
+          <div><b>GFSK</b><span>Gaussian Frequency-Shift Keying: the modulation BLE uses to encode bits.</span></div>
+          <div><b>Advertising</b><span>A periodic broadcast packet announcing a peripheral before connection.</span></div>
+          <div><b>Scan</b><span>Listening for advertising packets from nearby peripherals.</span></div>
+          <div><b>Channel</b><span>A slice of radio spectrum; BLE uses 40 channels in the 2.4 GHz band.</span></div>
+          <div><b>Central</b><span>The BLE side that scans and initiates a connection; the laptop.</span></div>
+          <div><b>Peripheral</b><span>The BLE side that advertises and waits; the printer.</span></div>
+          <div><b>Connection</b><span>A scheduled, addressed radio link between central and peripheral.</span></div>
+          <div><b>Connection event</b><span>A scheduled moment when the two sides exchange packets.</span></div>
+          <div><b>Connection interval</b><span>How often the two sides exchange packets during a connection; 7.5 ms to 4 s in BLE.</span></div>
+          <div><b>Latency</b><span>How many connection events the peripheral may skip when idle.</span></div>
+          <div><b>Supervision timeout</b><span>How long without a successful exchange before the link is lost.</span></div>
+          <div><b>Packet</b><span>A link-layer unit of data: preamble, access address, PDU, and CRC.</span></div>
+          <div><b>Preamble</b><span>The radio-synchronization prefix at the start of a packet.</span></div>
+          <div><b>Link layer</b><span>The BLE layer that handles packets, addressing, CRC, and retransmission.</span></div>
+          <div><b>PDU</b><span>Protocol Data Unit: the payload and header carried inside a packet.</span></div>
+          <div><b>Access address</b><span>A 4-byte identifier for a connection or advertising channel.</span></div>
+          <div><b>CRC</b><span>Cyclic Redundancy Check: a checksum for detecting accidental corruption.</span></div>
+          <div><b>L2CAP</b><span>The BLE layer that carries ATT and other protocols with length and channel ID.</span></div>
+          <div><b>ATT</b><span>Attribute Protocol: the read/write/notify operations GATT is built on.</span></div>
+          <div><b>HCI</b><span>Host Controller Interface: the boundary between the Bluetooth host and radio controller.</span></div>
+          <div><b>MTU</b><span>Maximum Transmission Unit: the largest ATT payload a link will carry.</span></div>
+          <div><b>RSSI</b><span>Received Signal Strength Indicator: a rough radio power measurement in dBm.</span></div>
+          <div><b>GATT</b><span>Generic Attribute Profile: the database of services and characteristics.</span></div>
+          <div><b>GATT client / server</b><span>The client discovers and accesses; the server holds the attribute table.</span></div>
+          <div><b>Attribute</b><span>A row in the GATT table with a handle, UUID, permissions, and value.</span></div>
+          <div><b>Handle</b><span>The 16-bit address of an attribute in the printer’s GATT table.</span></div>
+          <div><b>UUID</b><span>A 128-bit identifier naming a service or characteristic type.</span></div>
+          <div><b>Service</b><span>A group of related GATT characteristics.</span></div>
+          <div><b>Characteristic</b><span>A value with a UUID, properties, and optional descriptors.</span></div>
+          <div><b>Descriptor</b><span>Metadata attached to a characteristic.</span></div>
+          <div><b>Property</b><span>A permitted operation such as read, write, or notify.</span></div>
+          <div><b>CCCD</b><span>Client Characteristic Configuration Descriptor: the notification subscription switch.</span></div>
+          <div><b>Notification</b><span>An unacknowledged value push from server to client.</span></div>
+          <div><b>Indication</b><span>A value push that the client acknowledges at the ATT layer.</span></div>
+          <div><b>Write command</b><span>A GATT write with no ATT-level response.</span></div>
+          <div><b>Write request</b><span>A GATT write that expects an ATT-level response.</span></div>
+          <div><b>Frame</b><span>A structured message with header, length, payload, checksum, and terminator.</span></div>
+          <div><b>Payload</b><span>The data carried inside a frame or packet.</span></div>
+          <div><b>Little-endian</b><span>A byte order where the least significant byte comes first.</span></div>
+          <div><b>Raster</b><span>An image stored as rows of pixels rather than drawing commands.</span></div>
+          <div><b>Bitmap</b><span>A grid of pixels, each with a value; here, one bit per pixel.</span></div>
+          <div><b>DPI</b><span>Dots Per Inch: print resolution; 203 dpi here.</span></div>
+          <div><b>LSB / MSB</b><span>Least / most significant bit: the low-value and high-value ends of a byte.</span></div>
+          <div><b>Dithering</b><span>Approximating gray with patterns of black and white dots.</span></div>
+          <div><b>Thresholding</b><span>Converting grayscale to black or white at a cutoff.</span></div>
+          <div><b>Baseline</b><span>The invisible line on which most letters sit.</span></div>
+          <div><b>Anchor</b><span>The reference point Pillow uses to place a text run.</span></div>
+          <div><b>Ascender</b><span>The part of a letter such as h, d, or l that rises above the x-height.</span></div>
+          <div><b>Descender</b><span>The part of a letter such as g, p, or y that falls below the baseline.</span></div>
+          <div><b>X-height</b><span>The height of lowercase letters such as a, c, and e.</span></div>
+          <div><b>Glyph</b><span>The drawn shape of a character.</span></div>
+          <div><b>Bounding box</b><span>The rectangle around the ink of a particular string or glyph.</span></div>
+          <div><b>Font metrics</b><span>Font-wide measurements such as ascent and descent, independent of a string.</span></div>
+          <div><b>Driver</b><span>Software that knows how to talk to a device.</span></div>
+          <div><b>Daemon</b><span>A long-running background process; here, the local device broker.</span></div>
+          <div><b>Broker</b><span>A process that owns a shared resource and serializes access to it.</span></div>
+          <div><b>API</b><span>Application Programming Interface: a defined way for programs to call each other.</span></div>
+          <div><b>HTTP / JSON</b><span>The request/response protocol of the web and a text format for structured data.</span></div>
+          <div><b>CLI / UI</b><span>A terminal interface / a visual user interface.</span></div>
+          <div><b>Plugin</b><span>Software that adds tools or behavior to a host application such as OpenCode.</span></div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <footer class="site-foot">
+    <div class="foot-grid">
+      <div>
+        <strong style="color:var(--text)">Thermal / Notes</strong><br>
+        A teaching page distilled from the MXW01 build.
+      </div>
+      <div>
+        <a href="README.md">README</a> ·
+        <a href="PROTOCOL.md">Protocol reference</a> ·
+        <a href="BLOG_NOTES.md">Full notes</a>
+      </div>
+    </div>
+    <p class="fine">
+      <strong style="color:var(--text)">Protocol references:</strong>
+      <a href="https://github.com/PinThePenguinOne/MXW01_Thermal-Printer-Tool">PinThePenguinOne</a>,
+      <a href="https://github.com/MaikelChan/CatPrinterBLE">MaikelChan</a>,
+      <a href="https://github.com/clementvp/mxw01-thermal-printer">clementvp</a>,
+      <a href="https://github.com/ChiaraCannolee/thermal-pocket-printer-basic">ChiaraCannolee</a>,
+      and <a href="https://github.com/rbaron/catprinter">rbaron</a>.
+    </p>
+    <p class="fine">
+      No vendor software development kit (SDK) or app code was copied. Protocol facts were
+      reimplemented from public reverse-engineering work; check each project’s license before
+      reusing source code. The Python package, renderer, daemon, web UI, tests, and plugin are
+      original. The printer is an MXW01 on firmware 1.9.3.1.1; behavior may vary by unit.
+    </p>
+  </footer>
+</main>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+  const toHex = (value) => value.toString(16).toUpperCase().padStart(2, "0");
+
+  /* ---------- theme + progress ---------- */
+  const themeBtn = $("#themeBtn");
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem("thermal-notes-theme"); } catch (_) {}
+  if (savedTheme === "paper") document.body.dataset.theme = "paper";
+
+  function syncThemeButton() {
+    const paper = document.body.dataset.theme === "paper";
+    themeBtn.textContent = paper ? "Dark mode" : "Paper mode";
+    themeBtn.setAttribute("aria-pressed", String(paper));
+  }
+  themeBtn.addEventListener("click", () => {
+    const paper = document.body.dataset.theme === "paper";
+    if (paper) delete document.body.dataset.theme;
+    else document.body.dataset.theme = "paper";
+    try { localStorage.setItem("thermal-notes-theme", paper ? "dark" : "paper"); } catch (_) {}
+    syncThemeButton();
+  });
+  syncThemeButton();
+
+  const progress = $("#progress");
+  function updateProgress() {
+    const max = document.documentElement.scrollHeight - window.innerHeight;
+    const ratio = max > 0 ? window.scrollY / max : 0;
+    progress.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
+  }
+  window.addEventListener("scroll", updateProgress, { passive: true });
+  window.addEventListener("resize", updateProgress);
+  updateProgress();
+
+  /* ---------- top-level reading views ---------- */
+  const viewTabs = $$(".view-tab");
+  const viewPanels = $$(".view-panel");
+  const guideNav = $("#guideNav");
+  const storyNav = $("#storyNav");
+  const guideTitle = "From a sentence to a black dot — MXW01 teaching notes";
+  const storyTitle = "From a keypress to a heated dot — MXW01 full narrative";
+
+  function setView(name, scroll = false) {
+    const view = name === "story" ? "story" : "guide";
+    viewTabs.forEach((tab) => {
+      const active = tab.dataset.view === view;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+      tab.tabIndex = active ? 0 : -1;
+    });
+    viewPanels.forEach((panel) => {
+      const active = panel.id === `view-${view}`;
+      panel.hidden = !active;
+      panel.classList.toggle("active", active);
+    });
+    if (guideNav) guideNav.hidden = view !== "guide";
+    if (storyNav) storyNav.hidden = view !== "story";
+    document.body.dataset.view = view;
+    document.title = view === "story" ? storyTitle : guideTitle;
+    $$(".site-nav a").forEach((link) => { link.style.color = ""; });
+    try { localStorage.setItem("thermal-notes-view", view); } catch (_) {}
+    if (scroll) {
+      const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      window.scrollTo({ top: 0, behavior: reduced ? "auto" : "smooth" });
+    }
+    window.dispatchEvent(new Event("scroll"));
+  }
+
+  viewTabs.forEach((tab) => {
+    tab.addEventListener("click", () => setView(tab.dataset.view, true));
+    tab.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      const index = viewTabs.indexOf(tab);
+      const offset = event.key === "ArrowRight" ? 1 : viewTabs.length - 1;
+      const next = viewTabs[(index + offset) % viewTabs.length];
+      next.focus();
+      setView(next.dataset.view, true);
+    });
+  });
+
+  let savedView = null;
+  try { savedView = localStorage.getItem("thermal-notes-view"); } catch (_) {}
+  setView(savedView === "story" ? "story" : "guide", false);
+
+  /* ---------- bit lab ---------- */
+  const bitRow = $("#bitRow");
+  const bitBin = $("#bitBin");
+  const bitDec = $("#bitDec");
+  const bitHex = $("#bitHex");
+  const bitAscii = $("#bitAscii");
+  const bitNote = $("#bitNote");
+  let bits = [0, 1, 0, 0, 0, 0, 0, 1]; // 0x41, "A", MSB on the left
+
+  function renderBits() {
+    bitRow.innerHTML = "";
+    bits.forEach((value, index) => {
+      const position = 7 - index;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `bit${value ? " on" : ""}`;
+      button.setAttribute("aria-pressed", String(Boolean(value)));
+      button.setAttribute("aria-label", `Bit ${position}, value ${value}`);
+      button.innerHTML = `<span class="val">${value}</span><span class="pos">bit ${position}</span>`;
+      button.addEventListener("click", () => {
+        bits[index] = bits[index] ? 0 : 1;
+        renderBits();
+      });
+      bitRow.appendChild(button);
+    });
+
+    const binary = bits.join("");
+    const value = parseInt(binary, 2);
+    bitBin.textContent = binary;
+    bitDec.textContent = String(value);
+    bitHex.textContent = `0x${toHex(value)}`;
+    bitAscii.textContent = value >= 32 && value <= 126 ? String.fromCharCode(value) : "—";
+
+    if (value === 0x01) {
+      bitNote.innerHTML = "0x01 looks like the rightmost bit here, but the printer reads pixels LSB-first: this is the <strong>leftmost</strong> pixel in a row.";
+    } else if (value === 0x80) {
+      bitNote.innerHTML = "0x80 looks like the leftmost bit here, but the printer reads pixels LSB-first: this is the <strong>rightmost</strong> pixel in a row.";
+    } else if (value === 0x41) {
+      bitNote.innerHTML = "0x41 is ASCII <code>A</code> — but in a raster it is just eight heater decisions. Same byte, different meaning.";
+    } else {
+      bitNote.textContent = "The same eight bits can mean a number, a character, or eight heater decisions. Meaning comes from context.";
+    }
+  }
+  $$(".preset-btn").forEach((button) => {
+    button.addEventListener("click", () => {
+      bits = button.dataset.bits.split("").map(Number);
+      renderBits();
+    });
+  });
+  renderBits();
+
+  /* ---------- layer explorer ---------- */
+  const layers = {
+    physics: {
+      kicker: "Layer 01",
+      title: "Voltage, timing, and heat",
+      body: "A logic 0 and a logic 1 are voltage ranges, not abstract numbers. The print head turns current into heat for a precise amount of time.",
+      fail: "A weak battery, cold paper, or a bad cable changes how dark the dots become."
+    },
+    radio: {
+      kicker: "Layer 02",
+      title: "2.4 GHz radio",
+      body: "The printer advertises on a small packet, then hops channels with the laptop during a connection. BLE is designed for short, infrequent messages and low power.",
+      fail: "Out of range, interference, or a sleeping printer. Signal strength (RSSI) is a hint, not a distance measurement."
+    },
+    gatt: {
+      kicker: "Layer 03",
+      title: "Link layer + GATT",
+      body: "GATT organizes the printer's data into services and characteristics. You write commands to ae01, subscribe to ae02, and stream image rows to ae03.",
+      fail: "Wrong service identifier (UUID), missing notification subscription (CCCD), or the phone app holding the single connection."
+    },
+    protocol: {
+      kicker: "Layer 04",
+      title: "Frames, commands, CRC",
+      body: "A frame is a magic header, command byte, length, payload, checksum, and terminator. The printer replies with the same framing.",
+      fail: "Wrong checksum (CRC) variant, wrong length, wrong endianness, or a missing acknowledgement."
+    },
+    raster: {
+      kicker: "Layer 05",
+      title: "384 pixels, 1 bit each",
+      body: "Each row is 48 bytes. The MXW01 wants 1 = black and LSB-first packing, with rows sent one at a time.",
+      fail: "Inverted image, reversed bits, or the wrong row width. The picture looks plausible and prints as garbage."
+    },
+    render: {
+      kicker: "Layer 06",
+      title: "Fonts, layout, dithering",
+      body: "Text is drawn on a grayscale canvas with measured widths, then thresholded. Photos are dithered; QR modules stay crisp with nearest-neighbor resizing.",
+      fail: "Text overflows, baselines drift, receipt columns misalign, or a photo turns into mud."
+    },
+    you: {
+      kicker: "Layer 07",
+      title: "CLI, web UI, agent",
+      body: "The front doors are different, but they share one printer manager and one BLE connection. The daemon owns the device; the front doors just ask.",
+      fail: "Daemon down, wrong port, printer asleep, or an error message too vague to act on."
+    }
+  };
+
+  const layerDetail = $("#layerDetail");
+  function showLayer(key) {
+    const layer = layers[key];
+    layerDetail.innerHTML = `
+      <p class="eyebrow">${layer.kicker}</p>
+      <h3>${layer.title}</h3>
+      <p>${layer.body}</p>
+      <div class="fail"><b>Failure mode</b><br>${layer.fail}</div>
+    `;
+    $$(".layer-btn").forEach((button) => {
+      const active = button.dataset.layer === key;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+  }
+  $$(".layer-btn").forEach((button) => {
+    button.addEventListener("click", () => showLayer(button.dataset.layer));
+  });
+  showLayer("physics");
+
+  /* ---------- GATT explorer ---------- */
+  const gattData = {
+    adv: [
+      {
+        id: "af30",
+        uuid: "af30",
+        kind: "advertised service",
+        service: true,
+        sub: "scan packet",
+        direction: "—",
+        props: "advertisement",
+        body: "This UUID appeared in the BLE advertisement. It is a hint, not the command API. Building a driver from this alone is how you end up talking to the wrong service.",
+        example: "services: 0000af30-0000-1000-8000-00805f9b34fb"
+      }
+    ],
+    gatt: [
+      {
+        id: "ae30",
+        uuid: "ae30",
+        kind: "vendor service",
+        service: true,
+        sub: "the real command service",
+        direction: "—",
+        props: "service",
+        body: "The actual MXW01 vendor service. It contains the control, notification, and image-data characteristics. The advertisement did not mention it.",
+        example: "service 0000ae30-0000-1000-8000-00805f9b34fb"
+      },
+      {
+        id: "ae01",
+        uuid: "ae01",
+        kind: "control",
+        sub: "commands",
+        direction: "laptop → printer",
+        props: "write-without-response",
+        body: "Commands go here: status, intensity, print request, flush. Write-without-response means the ATT layer does not acknowledge; the printer's own replies are the feedback.",
+        example: "22 21 A1 00 01 00 00 00 FF"
+      },
+      {
+        id: "ae02",
+        uuid: "ae02",
+        kind: "notify",
+        sub: "responses",
+        direction: "printer → laptop",
+        props: "notify",
+        body: "The printer pushes responses here: A1 status, A9 ack, AA complete, AB battery, B1 firmware. You must subscribe via the Client Characteristic Configuration Descriptor (CCCD), and notifications can still be dropped.",
+        example: "22 21 AA 00 00 00 00 FF"
+      },
+      {
+        id: "ae03",
+        uuid: "ae03",
+        kind: "image data",
+        sub: "raw rows",
+        direction: "laptop → printer",
+        props: "write-without-response",
+        body: "Raw 1-bit image rows. 48 bytes per row, written one row at a time with a 10 ms pause in this driver. This is where the raster becomes paper.",
+        example: "48 bytes per row · 1 = black · LSB first"
+      },
+      {
+        id: "ae04",
+        uuid: "ae04",
+        kind: "notify",
+        sub: "secondary",
+        direction: "printer → laptop",
+        props: "notify",
+        body: "Present in the GATT table, but unused by this driver.",
+        example: "—"
+      },
+      {
+        id: "ae05",
+        uuid: "ae05",
+        kind: "indicate",
+        sub: "secondary",
+        direction: "printer → laptop",
+        props: "indicate",
+        body: "An indicate characteristic: like notify, but the client must acknowledge at the ATT layer. Unused here.",
+        example: "—"
+      },
+      {
+        id: "ae10",
+        uuid: "ae10",
+        kind: "config",
+        sub: "vendor block",
+        direction: "both",
+        props: "read / write",
+        body: "A vendor configuration block. Present in the table, but unused by this driver.",
+        example: "—"
+      }
+    ]
+  };
+
+  let gattView = "adv";
+  let gattSelected = "af30";
+  const gattList = $("#gattList");
+  const gattDetail = $("#gattDetail");
+
+  function renderGattDetail(item) {
+    gattDetail.innerHTML = `
+      <h3>${item.uuid}</h3>
+      <div class="sub">${item.kind} · ${item.sub}</div>
+      <div class="gatt-meta">
+        <span class="gatt-pill ${item.direction.includes("→ printer") ? "out" : item.direction.includes("printer →") ? "in" : ""}">${item.direction}</span>
+        <span class="gatt-pill">${item.props}</span>
+      </div>
+      <p>${item.body}</p>
+      <div class="gatt-example">${item.example}</div>
+    `;
+  }
+
+  function renderGattList() {
+    const items = gattData[gattView];
+    gattList.innerHTML = "";
+    items.forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `gatt-item${item.service ? " service" : ""}${item.id === gattSelected ? " active" : ""}`;
+      button.setAttribute("aria-pressed", String(item.id === gattSelected));
+      button.innerHTML = `<span class="uuid">${item.uuid}</span><span class="kind">${item.kind}</span>`;
+      button.addEventListener("click", () => {
+        gattSelected = item.id;
+        $$(".gatt-item").forEach((el) => {
+          const active = el === button;
+          el.classList.toggle("active", active);
+          el.setAttribute("aria-pressed", String(active));
+        });
+        renderGattDetail(item);
+      });
+      gattList.appendChild(button);
+    });
+
+    const selected = items.find((item) => item.id === gattSelected) || items[0];
+    gattSelected = selected.id;
+    renderGattDetail(selected);
+  }
+
+  function setGattView(view) {
+    gattView = view;
+    gattSelected = view === "adv" ? "af30" : "ae30";
+    $$(".gatt-tab").forEach((button) => {
+      const active = button.dataset.view === view;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    renderGattList();
+  }
+  $$(".gatt-tab").forEach((button) => {
+    button.addEventListener("click", () => setGattView(button.dataset.view));
+  });
+  setGattView("adv");
+
+  /* ---------- frame builder ---------- */
+  const commands = {
+    A1: { payload: "00", note: "Ask for state, battery, temperature, and errors." },
+    A2: { payload: "5D", note: "Set heat energy; 0x5D = 93." },
+    A9: { payload: "D0 00 30 00", note: "Height 208 rows, 48 bytes/row, monochrome." },
+    AD: { payload: "00", note: "End of image data; flush the print." },
+    AB: { payload: "00", note: "Ask for the battery percentage." },
+    B1: { payload: "00", note: "Ask for the firmware version." }
+  };
+
+  const cmdSelect = $("#cmdSelect");
+  const payloadInput = $("#payloadInput");
+  const crcStepsCheck = $("#crcSteps");
+  const frameBytes = $("#frameBytes");
+  const frameSummary = $("#frameSummary");
+  const crcStepsBox = $("#crcStepsBox");
+  const cmdNote = $("#cmdNote");
+  const copyFrame = $("#copyFrame");
+  let lastFrame = [];
+
+  function crc8(bytes) {
+    let crc = 0;
+    for (const byte of bytes) {
+      crc ^= byte;
+      for (let i = 0; i < 8; i += 1) {
+        crc = crc & 0x80 ? ((crc << 1) ^ 0x07) & 0xff : (crc << 1) & 0xff;
+      }
+    }
+    return crc;
+  }
+
+  function parseHex(value) {
+    const cleaned = value.replace(/0x/gi, "").replace(/[\s,;:-]/g, "");
+    if (cleaned === "") return [];
+    if (!/^[0-9a-f]+$/i.test(cleaned)) throw new Error("Payload must be hexadecimal.");
+    if (cleaned.length % 2 !== 0) throw new Error("Hex needs an even number of digits.");
+    const out = [];
+    for (let i = 0; i < cleaned.length; i += 2) {
+      out.push(parseInt(cleaned.slice(i, i + 2), 16));
+    }
+    return out;
+  }
+
+  function buildFrame() {
+    const cmd = cmdSelect.value;
+    cmdNote.textContent = commands[cmd].note;
+    let payload;
+    try {
+      payload = parseHex(payloadInput.value);
+    } catch (error) {
+      lastFrame = [];
+      frameBytes.innerHTML = `<span class="frame-error">${error.message}</span>`;
+      frameSummary.textContent = "";
+      crcStepsBox.hidden = true;
+      return;
+    }
+
+    const cmdByte = parseInt(cmd, 16);
+    const crc = crc8(payload);
+    const length = payload.length;
+    const bytes = [0x22, 0x21, cmdByte, 0x00, length & 0xff, (length >> 8) & 0xff, ...payload, crc, 0xff];
+    lastFrame = bytes;
+    frameBytes.innerHTML = "";
+
+    bytes.forEach((byte, index) => {
+      const span = document.createElement("span");
+      span.className = "byte";
+      span.textContent = toHex(byte);
+      if (index < 2) span.classList.add("header");
+      else if (index === 2) span.classList.add("cmd");
+      else if (index === 3) span.classList.add("reserved");
+      else if (index < 6) span.classList.add("length");
+      else if (index < 6 + length) span.classList.add("payload");
+      else if (index === 6 + length) span.classList.add("crc");
+      else span.classList.add("end");
+      span.title = span.className.replace("byte ", "");
+      frameBytes.appendChild(span);
+    });
+
+    frameSummary.innerHTML = `Payload length <b>${length}</b> byte${length === 1 ? "" : "s"} · CRC-8 <b>0x${toHex(crc)}</b> · total frame <b>${bytes.length}</b> bytes.`;
+
+    if (crcStepsCheck.checked) {
+      crcStepsBox.hidden = false;
+      let rows = `<table><thead><tr><th>byte</th><th>running CRC</th></tr></thead><tbody>`;
+      let running = 0;
+      payload.forEach((byte) => {
+        running ^= byte;
+        for (let i = 0; i < 8; i += 1) {
+          running = running & 0x80 ? ((running << 1) ^ 0x07) & 0xff : (running << 1) & 0xff;
+        }
+        rows += `<tr><td>0x${toHex(byte)}</td><td>0x${toHex(running)}</td></tr>`;
+      });
+      rows += `</tbody></table>`;
+      crcStepsBox.innerHTML = rows;
+    } else {
+      crcStepsBox.hidden = true;
+    }
+  }
+
+  cmdSelect.addEventListener("change", () => {
+    payloadInput.value = commands[cmdSelect.value].payload;
+    buildFrame();
+  });
+  payloadInput.addEventListener("input", buildFrame);
+  crcStepsCheck.addEventListener("change", buildFrame);
+  copyFrame.addEventListener("click", async () => {
+    if (!lastFrame.length) return;
+    const text = lastFrame.map(toHex).join(" ");
+    try {
+      await navigator.clipboard.writeText(text);
+      copyFrame.textContent = "Copied";
+      setTimeout(() => { copyFrame.textContent = "Copy hex"; }, 1400);
+    } catch (_) {
+      copyFrame.textContent = "Select the hex above";
+    }
+  });
+  buildFrame();
+
+  /* ---------- raster lab ---------- */
+  const samplePixels = [
+    [0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+    [1, 0, 1, 0, 0, 1, 0, 1],
+    [1, 0, 0, 0, 0, 0, 0, 1],
+    [1, 0, 1, 0, 0, 1, 0, 1],
+    [1, 0, 0, 1, 1, 0, 0, 1],
+    [0, 1, 0, 0, 0, 0, 1, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0]
+  ];
+  let pixels = samplePixels.map((row) => row.slice());
+  const pixelGrid = $("#pixelGrid");
+  const rasterRows = $("#rasterRows");
+
+  function renderRaster() {
+    pixelGrid.innerHTML = "";
+    pixels.forEach((row, rowIndex) => {
+      row.forEach((value, colIndex) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `pixel${value ? " black" : ""}`;
+        button.setAttribute("role", "gridcell");
+        button.setAttribute("aria-label", `Row ${rowIndex + 1}, column ${colIndex + 1}, ${value ? "black" : "white"}`);
+        button.setAttribute("aria-pressed", String(Boolean(value)));
+        button.addEventListener("click", () => {
+          pixels[rowIndex][colIndex] = pixels[rowIndex][colIndex] ? 0 : 1;
+          renderRaster();
+        });
+        pixelGrid.appendChild(button);
+      });
+    });
+
+    rasterRows.innerHTML = "";
+    pixels.forEach((row, rowIndex) => {
+      const printerByte = row.reduce((acc, value, col) => acc | (value << col), 0);
+      const pillowByte = row.reduce((acc, value, col) => acc | ((value ? 0 : 1) << (7 - col)), 0);
+      const printerBits = row.slice().reverse().join("");
+      const pillowBits = row.map((value) => (value ? "0" : "1")).join("");
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${rowIndex + 1}</td>
+        <td class="printer-col"><code>0x${toHex(printerByte)}</code><br><span class="bits">${printerBits}</span></td>
+        <td class="pillow-col"><code>0x${toHex(pillowByte)}</code><br><span class="bits">${pillowBits}</span></td>
+      `;
+      rasterRows.appendChild(tr);
+    });
+  }
+
+  $("#rasterSample").addEventListener("click", () => {
+    pixels = samplePixels.map((row) => row.slice());
+    renderRaster();
+  });
+  $("#rasterClear").addEventListener("click", () => {
+    pixels = Array.from({ length: 8 }, () => Array(8).fill(0));
+    renderRaster();
+  });
+  $("#rasterFill").addEventListener("click", () => {
+    pixels = Array.from({ length: 8 }, () => Array(8).fill(1));
+    renderRaster();
+  });
+  renderRaster();
+
+  /* ---------- baseline demo ---------- */
+  const baselineStage = $("#baselineStage");
+  const baselineBtn = $("#baselineBtn");
+  const baselineCaption = $("#baselineCaption");
+  baselineBtn.addEventListener("click", () => {
+    const top = baselineStage.dataset.mode === "top";
+    baselineStage.dataset.mode = top ? "baseline" : "top";
+    baselineBtn.textContent = top ? "Show the bug (top alignment)" : "Show the fix";
+    baselineBtn.setAttribute("aria-pressed", String(!top));
+    baselineCaption.textContent = top
+      ? "Baseline alignment: both runs sit on one shared line."
+      : "Top alignment: the short word floats above the shared line.";
+  });
+
+  /* ---------- front door tabs ---------- */
+  $$(".door-tab").forEach((button) => {
+    button.addEventListener("click", () => {
+      const door = button.dataset.door;
+      $$(".door-tab").forEach((tab) => {
+        const active = tab === button;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", String(active));
+      });
+      $$(".door-panel").forEach((panel) => {
+        const active = panel.id === `door-${door}`;
+        panel.classList.toggle("active", active);
+        panel.hidden = !active;
+      });
+    });
+  });
+
+  /* ---------- journey ---------- */
+  const journeyStages = ["render", "pack", "frame", "send", "flush", "done"];
+  const journeyMessages = [
+    "Render: 384 × 128 grayscale → threshold → 1-bit. The preview is ready.",
+    "Pack: 128 content rows + 80 feed rows = 208 rows × 48 bytes = 9,984 bytes.",
+    "Frame: 22 21 A9 00 04 00 D0 00 30 00 34 FF. The printer accepts the job.",
+    "Send: 208 writes to ae03, 48 bytes each, 10 ms apart. That is 2.08 s of pacing.",
+    "Flush: AD 00. The printer knows the image is complete.",
+    "Finish: heat, paper, and about 8–10 seconds. Waiting for AA. Done — probably."
+  ];
+  const journeyBtn = $("#journeyBtn");
+  const journeyLog = $("#journeyLog");
+  const journeyBar = $("#journeyBar");
+  let journeyTimers = [];
+
+  function resetJourney() {
+    journeyTimers.forEach((timer) => clearTimeout(timer));
+    journeyTimers = [];
+    journeyBtn.disabled = false;
+    journeyBtn.textContent = "Print a short note";
+    journeyBar.style.width = "0%";
+    $$(".stage").forEach((stage) => stage.classList.remove("active", "done"));
+    journeyLog.textContent = "Ready. This is the path a short note takes.";
+  }
+
+  journeyBtn.addEventListener("click", () => {
+    resetJourney();
+    journeyBtn.disabled = true;
+    journeyBtn.textContent = "Printing…";
+    journeyStages.forEach((stageName, index) => {
+      const timer = setTimeout(() => {
+        const stage = document.querySelector(`[data-stage="${stageName}"]`);
+        if (!stage) return;
+        stage.classList.add("active");
+        if (index > 0) {
+          const previous = document.querySelector(`[data-stage="${journeyStages[index - 1]}"]`);
+          if (previous) previous.classList.add("done");
+        }
+        journeyLog.textContent = journeyMessages[index];
+        journeyBar.style.width = `${((index + 1) / journeyStages.length) * 100}%`;
+        if (index === journeyStages.length - 1) {
+          stage.classList.add("done");
+          journeyBtn.disabled = false;
+          journeyBtn.textContent = "Print it again";
+        }
+      }, index * 760);
+      journeyTimers.push(timer);
+    });
+  });
+
+  /* ---------- quiz ---------- */
+  $$(".quiz-q").forEach((question) => {
+    const feedback = question.querySelector(".quiz-feedback");
+    question.querySelectorAll(".quiz-opt").forEach((option) => {
+      option.addEventListener("click", () => {
+        question.querySelectorAll(".quiz-opt").forEach((button) => {
+          button.classList.remove("correct", "wrong");
+        });
+        const correct = option.dataset.correct === "true";
+        option.classList.add(correct ? "correct" : "wrong");
+        feedback.textContent = correct ? feedback.dataset.good : feedback.dataset.bad;
+        feedback.style.color = correct ? "var(--green)" : "var(--red)";
+      });
+    });
+  });
+
+  /* ---------- active nav ---------- */
+  const navLinks = $$(".site-nav a");
+  const observedSections = navLinks
+    .map((link) => document.querySelector(link.getAttribute("href")))
+    .filter(Boolean);
+  if ("IntersectionObserver" in window && observedSections.length) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        navLinks.forEach((link) => {
+          const active = link.getAttribute("href") === `#${entry.target.id}`;
+          link.style.color = active ? "var(--accent-2)" : "";
+        });
+      });
+    }, { rootMargin: "-35% 0px -55% 0px", threshold: 0 });
+    observedSections.forEach((section) => observer.observe(section));
+  }
+})();
+</script>
+</body>
+</html>

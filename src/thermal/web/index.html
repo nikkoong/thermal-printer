@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Thermal / Agent Printer</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="dot"></span>
+          <strong>THERMAL</strong>
+          <span class="slash">/</span>
+          <span>AGENT PRINTER</span>
+        </div>
+        <div class="status-wrap">
+          <span id="battery" class="battery"></span>
+          <span id="statusPill" class="pill offline">offline</span>
+          <button id="connectBtn" class="ghost">Connect</button>
+        </div>
+      </header>
+
+      <main class="grid">
+        <section class="composer" aria-label="Compose a print">
+          <div class="section-head">
+            <h1>Compose</h1>
+            <span>48 mm &middot; 203 dpi &middot; 384 px</span>
+          </div>
+
+          <label>
+            Title
+            <input id="title" type="text" placeholder="Build complete" autocomplete="off" />
+          </label>
+
+          <label>
+            Message
+            <textarea id="message" placeholder="**Done.** The thing works.&#10;&#10;- tests pass&#10;- docs updated&#10;- shipped"></textarea>
+          </label>
+
+          <div class="row">
+            <label>
+              Style
+              <select id="style">
+                <option value="note">Note</option>
+                <option value="receipt">Receipt</option>
+                <option value="quote">Quote</option>
+                <option value="task">Task list</option>
+                <option value="sticker">Sticker</option>
+              </select>
+            </label>
+            <label>
+              QR / URL
+              <input id="qr" type="text" placeholder="https://..." autocomplete="off" />
+            </label>
+          </div>
+
+          <div class="row">
+            <label>
+              Footer
+              <input id="footer" type="text" placeholder="optional small line" autocomplete="off" />
+            </label>
+            <div class="file-field">
+              <label class="field-label" for="image">Image</label>
+              <div class="file-row">
+                <input id="image" type="file" accept="image/*" />
+                <button id="clearImage" type="button" class="mini" hidden>Clear</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="row three">
+            <label>
+              Density <span id="densityVal" class="range-value">1</span>
+              <input id="density" type="range" min="0" max="2" step="1" value="1" />
+            </label>
+            <label>
+              Feed <span id="feedVal" class="range-value">80</span>
+              <input id="feed" type="range" min="0" max="200" step="10" value="80" />
+            </label>
+            <div>
+              <span class="field-label">Options</span>
+              <label class="check" style="margin-top: 8px">
+                <input id="labelMode" type="checkbox" />
+                Label mode
+              </label>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="printBtn" class="primary">Print</button>
+            <button id="previewBtn" class="secondary">Refresh preview</button>
+            <button id="dryRunBtn" class="ghost">Save preview only</button>
+          </div>
+          <p id="messageBox" class="message" aria-live="polite"></p>
+        </section>
+
+        <section class="preview-panel" aria-label="Print preview">
+          <div class="section-head">
+            <h1>Preview</h1>
+            <span id="previewMeta">waiting</span>
+          </div>
+          <div class="paper-wrap">
+            <div class="paper">
+              <img id="preview" alt="Thermal print preview" hidden />
+              <div id="previewEmpty" class="empty">Your receipt will appear here.</div>
+            </div>
+          </div>
+          <div class="preview-meta">
+            <span id="previewSize"></span>
+            <a id="downloadLink" download="thermal-preview.png" hidden>Download PNG</a>
+          </div>
+          <div id="inspiration" class="inspiration">
+            <span>Try:</span>
+          </div>
+        </section>
+      </main>
+
+      <section class="lower">
+        <div class="history">
+          <div class="section-head">
+            <h2>Recent prints</h2>
+            <span id="historyCount"></span>
+          </div>
+          <div id="historyList" class="history-list">
+            <div class="history-empty">Nothing printed yet.</div>
+          </div>
+        </div>
+
+        <div class="connection">
+          <div class="section-head">
+            <h2>Printer</h2>
+            <span id="transportLabel">local bridge</span>
+          </div>
+          <div id="printerInfo" class="printer-info">Not connected.</div>
+          <div class="printer-actions">
+            <button id="scanBtn" class="secondary">Scan Bluetooth</button>
+            <button id="mockBtn" class="ghost">Use mock printer</button>
+            <button id="disconnectBtn" class="ghost">Disconnect</button>
+          </div>
+          <div id="deviceList" class="device-list"></div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
